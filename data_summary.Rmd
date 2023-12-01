@@ -1,0 +1,2276 @@
+---
+title: "\\vspace{-1.5cm}{WHONET Data Summary Report}"
+#title: "\\fontsize{11pt}{2pt}\\selectfont \\textbf{WHONET Data Summary Report}"
+output:
+  pdf_document: 
+    latex_engine: xelatex
+    keep_tex: true
+mainfont: Helvetica
+papersize: a4
+header-includes:
+- \usepackage{titling}
+- \pretitle{\begin{flushleft}}
+- \posttitle{\end{flushleft}} 
+- \usepackage{booktabs}
+- \usepackage{longtable}
+- \usepackage{float}
+- \floatplacement{figure}{H}
+- \usepackage{colortbl}
+- \usepackage{pdflscape}
+- \usepackage{tabu}
+- \usepackage{makecell}
+- \usepackage{xcolor}
+- \usepackage{soul}
+- \usepackage{caption}
+- \usepackage[singlelinecheck=false]{caption}
+- \usepackage[font={footnotesize,it}]{caption}
+
+---
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = FALSE, comment = "")
+```
+
+
+```{r load library, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+library(tinytex)
+library(readxl)
+library(round)
+library(stringr)
+library(pander)
+library(janitor)
+
+```
+
+```{r data_summary_df, echo=FALSE, message=FALSE, warning=FALSE}
+#setwd("D:/ALLYSA FILE/2023/DMU Files/DMU Projects/Data Summary Report")
+
+
+#reading data file
+df <- read.csv("Excel/RAW_W0223PHL_VSM_2023.csv")
+ris_df <- read.csv("Excel/data_ris.csv")
+
+file_name <- sub('\\..*$', '', basename("Excel/RAW_W0223PHL_VSM_2023.csv"))
+f_month <- substring(file_name,first = 6, last = 7)
+f_year <- substring(file_name,first = 18, last = 21)
+f_site <- substring(file_name,first = 14, last = 16)
+
+
+names(df) <- tolower(names(df))
+names(ris_df) <- tolower(names(ris_df))
+
+ris_df <- ris_df[, -c(3:47)]
+
+colnames(ris_df)[3:215] <- paste(colnames(ris_df)[3:215], 'ris', sep = '_')
+#colnames(ris_df)[1] ="X"
+
+data_summary <- merge(x=df,y=ris_df, by="id", all.x=TRUE)
+data_summary <- data_summary[,!names(data_summary) %in% c("x", "mo")]
+data_summary$x_referred <- ifelse(!is.na(data_summary$x_referred),1,0)
+data_summary <- data_summary[data_summary$x_referred == 0, ]
+
+#replace NaN / NaT  values to NA to Blank
+data_summary[data_summary == 'nan'] <- NA
+data_summary[data_summary == 'NaT'] <- NA
+data_summary[data_summary == ""] <- NA
+
+
+#drop rows if a column contains a certain value
+drop <- c('qc', 'en', 'qa', 'fo', 'mi')
+  
+data_summary_df <- data_summary[!data_summary$spec_type %in% drop, ]
+
+#Delete duplicate values
+#data_summary_df[!duplicated(data_summary_df[c('patient_id', 'spec_type', 'organism')]), ]
+data_summary_clean <- data_summary %>% distinct(patient_id,spec_type,organism, .keep_all = TRUE)
+
+
+#write.csv(data_summary, file="Excel/data_summary.csv")
+#write.csv(data_summary_clean, file="Excel/data_summary_clean.csv")
+```
+
+```{r site name, echo=FALSE, message=FALSE, warning=FALSE}
+#Get the sentinel site name based on site code
+site_code <- c(
+  'BGH' = 'Baguio General Hospital and Medical Center',
+  'BRH' = 'Batangas Medical Center',
+  'BRT' = 'Bicol Regional Hospital and Medical Center',
+  'CMC' = 'Cotabato Regional Hospital and Medical Center',
+  'CRH' = 'Caraga Regional Hospital',
+  'CVM' = 'Cagayan Valley Medical Center',
+  'DMC' = 'Southern Philippines Medical Center',
+  'EVR' = 'Eastern Visayas Medical Center',
+  'FEU' = 'FEU - NRMF Medical Center',
+  'GMH' = 'Gov. Celestino Gallares Memorial Regional Hospital',
+  'JLM' = 'Jose B. Lingad Memorial Regional Hospital',
+  'LCP' = 'Lung Center of the Philippines',
+  'MAR' = 'Mariano Marcos Memorial Hospital and Medical Center',
+  'MMH' = 'Corazon Locsin Montelibano Memorial Regional Hospital',
+  'NKI' = 'National Kidney and Transplant Institute',
+  'NMC' = 'Northern Mindanao Medical Center',
+  'ONP' = 'Ospital ng Palawan',
+  'PGH' = 'Philippine General Hospital',
+  'RMC' = 'Rizal Medical Center',
+  'RTH' = 'Dr. Rafael S. Tumbokon Memorial Hospital',
+  'RTM' = 'Research Institute for Tropical Medicine',
+  'SLH' = 'San Lazaro Hospital',
+  'STU' = 'University of Sto. Tomas Hospital',
+  'VSM' = 'Vicente Sotto Memorial Medical Center',
+  'ZMC' = 'Zamboanga City Medical Center',
+  'ZPH' = 'Zamboanga del Norte Medical Center'
+)
+
+site_name <- site_code[f_site]
+
+```
+
+```{r month, echo=FALSE, message=FALSE, warning=FALSE}
+file_month <- c(
+  '01' = 'January',
+  '02' = 'February',
+  '03' = 'March',
+  '04' = 'April',
+  '05' = 'May',
+  '06' = 'June',
+  '07' = 'July',
+  '08' = 'August',
+  '09' = 'September',
+  '10' = 'October',
+  '11' = 'November',
+  '12' = 'December'
+)
+
+file_month <- file_month[f_month]
+
+```
+
+```{r Data Quality, echo=FALSE, message=FALSE, warning=FALSE}
+#Total number of df row
+row_sum <- nrow(data_summary_df)
+
+data_quality <- function(c_name){
+  row_sum <- nrow(data_summary_df)
+  tl <- nrow(na.omit(data_summary_df[c_name]))
+  pct <- (tl/ row_sum)* 100
+  pct <- format(round(pct, 2), nsmall = 2)
+
+  return(list(row_sum = row_sum, tl = tl, pct = pct))
+}
+
+#Part 1. Data Quality for computing Completeness of Minimum Required Data
+pt_id <- data_quality('patient_id')
+lname <- data_quality('last_name')
+sex <- data_quality('sex')
+age <- data_quality('age')
+date_birth <- data_quality('date_birth')
+ward <- data_quality('ward')
+dept <- data_quality('department')
+ward_type <- data_quality('ward_type')
+spec_num <- data_quality('spec_num')
+diagnosis <- data_quality('diagnosis')
+
+
+#Specimen Date
+f_date <- paste(f_year,f_month,"01", sep="/")
+f_date <- format(as.Date(f_date), '%m-%Y')
+
+spec_date <- format(as.Date(data_summary_df$spec_date), '%m-%Y')
+
+#result <- sum(spec_date == f_date)
+spec_date_c <- spec_date[(spec_date == f_date)]
+tl_spec_date <- NROW(spec_date_c)
+pct_spec_date<- (tl_spec_date/ row_sum) * 100
+pct_spec_date<- format(round(pct_spec_date, 2), nsmall = 2)
+
+
+#Specimen Type
+spec_df <- read_xlsx("Excel/SPECLIST.xlsx")
+spec_whonet <- spec_df[spec_df['HUMAN'] == 'X',]
+spec_dic <- na.omit(spec_whonet[['C_ENGLISH']])
+spec_type <- na.omit(data_summary_df[['spec_type']])
+cp_spec <- spec_type[(spec_type %in% spec_dic)]
+tl_spec_type <- NROW(cp_spec)
+pct_spec_type <- (tl_spec_type/ row_sum) * 100
+pct_spec_type <- format(round(pct_spec_type, 2), nsmall = 2)
+
+
+#Organism
+org_df <- read_xlsx("Excel/ORGLIST.xlsx")
+org_dic <- na.omit(org_df[['ORG']])
+org_og <- na.omit(data_summary_df[['organism']])
+cp_organism <- org_og[(org_og %in% org_dic)]
+tl_organism <- NROW(cp_organism)
+pct_organism <- (tl_organism/ row_sum) * 100
+pct_organism <- format(round(pct_organism, 2), nsmall = 2)
+
+
+#Date of admission (total inpatient)
+#total number of inpatient
+tl_inpatient <- nrow(data_summary_df[data_summary_df$ward_type %in% 'in', ])
+inpatient <- data_summary_df[data_summary_df$ward_type %in% 'in', ]
+
+in_date <- paste(f_year,f_month,"01", sep="/")
+in_date <- as.Date(in_date)
+in_date_n <- format(as.Date(in_date), "%m-%Y")
+
+admis_date <- format(as.Date(inpatient$date_admis), "%m-%Y")
+
+end_date <- in_date - 1
+#end_date <- in_date - 30
+end_date <- format(as.Date(end_date), "%m-%Y")
+
+
+admis_date_c <- admis_date[admis_date == in_date_n | admis_date == end_date]
+tl_admis_date <- NROW(na.omit(admis_date_c))
+#tl_admis_date <- NROW(admis_date_c)
+pct_admis_date<- (tl_admis_date/ tl_inpatient) * 100
+pct_admis_date<- format(round(pct_admis_date, 2), nsmall = 2)
+
+```
+
+```{r Data Summary, echo=FALSE, message=FALSE, warning=FALSE}
+
+#Computing the completeness of data
+min_data <- as.numeric(c(pt_id$pct,lname$pct,sex$pct,age$pct,date_birth$pct,ward$pct,dept$pct,ward_type$pct,spec_num$pct,pct_spec_date,pct_spec_type,pct_organism,pct_admis_date,diagnosis$pct))
+pct_complete <- mean(min_data)
+pct_complete <- format(round(pct_complete, 2), nsmall = 2)
+
+#Computing invalid codes
+org_vec <- na.omit(org_df[['ORG']])
+org_code <- data_summary_df[['organism']] 
+inv_organism <- org_code[!(org_code %in% org_vec)]
+inv_organism_df <- data.frame(inv_organism)
+tl_inv_organism <- NROW(inv_organism)
+#inv_organism_unique <- unique(inv_organism)
+inv_organism_df<- inv_organism_df %>% group_by_all() %>% count
+
+pct_inv_organism <- (tl_inv_organism/ row_sum) * 100
+pct_inv_organism <- format(round(pct_inv_organism, 2), nsmall = 2)
+
+
+#Computing invalid specimen type
+spec_vec <- na.omit(spec_whonet[['C_ENGLISH']])
+spec_t <- na.omit(data_summary_df[['spec_type']])
+inv_spec <- spec_t[!(spec_t %in% spec_vec)]
+inv_spec_df <- data.frame(inv_spec)
+tl_inv_spec <- NROW(inv_spec)
+#inv_spec_unique <- unique(inv_spec)
+inv_spec_df<- inv_spec_df %>% group_by_all() %>% count
+
+pct_inv_spec <- (tl_inv_spec/ row_sum) * 100
+pc_invt_spec <- format(round(pct_inv_spec, 2), nsmall = 2)
+
+
+#computing invalid specimen date
+inv_spec_date <- spec_date[(spec_date != f_date)]
+inv_spec_date_df <- data.frame(inv_spec_date)
+tl_inv_spec_date <- NROW(inv_spec_date)
+#inv_specdate_unique <- unique(inv_spec_date)
+inv_spec_date_df<- inv_spec_date_df %>% group_by_all() %>% count
+
+pct_inv_spec_date<- (tl_inv_spec_date/ row_sum) * 100
+pct_inv_spec_date<- format(round(pct_inv_spec_date, 2), nsmall = 2)
+
+
+#computing invalid admission date
+inv_admis_date <- admis_date[admis_date != in_date_n & admis_date != end_date]
+inv_admis_date_df <- data.frame(inv_admis_date)
+tl_inv_admis_date <- NROW(inv_admis_date_df)
+#inv_admis_unique <- unique(inv_admis_date)
+inv_admis_date_df <- inv_admis_date_df %>% group_by_all() %>% count
+
+pct_inv_admis_date<- (tl_inv_admis_date/ tl_inpatient) * 100
+pct_inv_admis_date<- format(round(pct_inv_admis_date, 2), nsmall = 2)
+
+```
+
+```{r Antibiotic Testing Monitoring, echo=FALSE, message=FALSE, warning=FALSE}
+path <- "Excel/ORG_GROUPINGS.xlsx"
+
+
+antibiotic_selector <- function(sheet_name,main_df,at_disk,at_mic,at_add){
+  df <- read_xlsx(path, sheet = sheet_name)
+  vec <- na.omit(df[['ORG']])
+  org_code <- na.omit(main_df[['organism']]) 
+  cp <- org_code[(org_code %in% vec)]
+  tl <- NROW(cp)
+
+
+  at_df <- main_df[main_df$organism %in% vec, ]
+  at_df_ur <- at_df[at_df$spec_type == 'ur',]
+  tl_ur <-NROW(at_df_ur)
+  pct_ur <- (tl_ur/ row_sum) * 100
+
+  
+  #at_count <- ifelse(!is.na(at_df[at_disk]) | !is.na(at_df[at_mic]),1,0)
+  at_count <- ifelse(!is.na(at_df[at_disk]) | !is.na(at_df[at_mic]), 1, ifelse(!is.na(at_df[at_add]), 1, 0))
+  at_count_ur <- ifelse(!is.na(at_df_ur[at_disk]) | !is.na(at_df_ur[at_mic]), 1, ifelse(!is.na(at_df_ur[at_add]), 1, 0))
+  at_sum <- sum(1 == at_count)
+  #at_pc <- (at_sum/ tl) * 100
+  at_pc <- if (at_sum != 0) (at_sum/tl) * 100 else 0
+  at_pc <- format(round(at_pc, 2), nsmall = 2)
+  
+  at_sum_ur <- sum(1 == at_count_ur)
+  at_pc_ur <- if (at_sum_ur != 0) (at_sum_ur/tl_ur) * 100 else 0
+  at_pc_ur <- format(round(at_pc_ur, 2), nsmall = 2)
+  
+  return(list(cp = cp, tl = tl,tl_ur = tl_ur, pct_ur = pct_ur, at_sum = at_sum, at_pc = at_pc, at_sum_ur = at_sum_ur, at_pc_ur = at_pc_ur))
+
+}
+
+additional_antibiotic_selector <- function(sheet_name,main_df,at_disk,at_mic,at_add){
+  df <- read_xlsx(path, sheet = sheet_name)
+  vec <- na.omit(df[['ORG']])
+  org_code <- na.omit(main_df[['organism']]) 
+  cp <- org_code[(org_code %in% vec)]
+  tl <- NROW(cp)
+
+
+  at_df <- main_df[main_df$organism %in% vec, ]
+  at_df_ur <- at_df[at_df$spec_type == 'ur',]
+  tl_ur <-NROW(at_df_ur)
+  pct_ur <- (tl_ur/ row_sum) * 100
+
+  
+  at_count <- ifelse(!is.na(at_df[at_disk]) | !is.na(at_df[at_mic]), 1, ifelse(!is.na(at_df[at_add]), 1, 0))
+  at_count_ur <- ifelse(!is.na(at_df_ur[at_disk]) | !is.na(at_df_ur[at_mic]), 1, ifelse(!is.na(at_df_ur[at_add]), 1, 0))
+  at_sum <- sum(1 == at_count)
+  at_pc <- if (at_sum != 0) (at_sum/at_sum) * 100 else 0
+  at_pc <- format(round(at_pc, 2), nsmall = 2)
+  
+  at_sum_ur <- sum(1 == at_count_ur)
+  at_pc_ur <- if (at_sum_ur != 0) (at_sum_ur/at_sum_ur) * 100 else 0
+  at_pc_ur <- format(round(at_pc_ur, 2), nsmall = 2)
+  
+  return(list(cp = cp, tl = tl,tl_ur = tl_ur, pct_ur = pct_ur, at_sum = at_sum, at_pc = at_pc, at_sum_ur = at_sum_ur, at_pc_ur = at_pc_ur))
+
+}
+
+antibiotic_tested_total <- function(antibiotics){
+  at_tested <- as.numeric(antibiotics)
+  at_tested_pc <- mean(at_tested)
+  #ebc_tested_pc <- if (ebc_tested_sum != 0) (ebc_tested_sum/ebc_amk$tl) else 0
+  at_tested_pc <- format(round(at_tested_pc, 2), nsmall = 2)
+  
+  return(list(at_tested_pc = at_tested_pc))
+}
+
+
+
+
+#ENTEROBACTERIACEAE except Salmonella & Shigella species
+ebc_amk <- antibiotic_selector('EBC',data_summary_df,'amk_nd30', 'amk_nm', 'amk_ne')
+ebc_amc <- antibiotic_selector('EBC',data_summary_df,'amc_nd20', 'amc_nm', 'amc_ne')
+ebc_amp <- antibiotic_selector('EBC',data_summary_df,'amp_nd10', 'amp_nm', 'amp_ne')
+ebc_atm <- antibiotic_selector('EBC',data_summary_df,'atm_nd30', 'atm_nm', 'atm_ne')
+ebc_czo <- antibiotic_selector('EBC',data_summary_df,'czo_nd30', 'czo_nm', 'czo_ne')
+ebc_fep <- antibiotic_selector('EBC',data_summary_df,'fep_nd30', 'fep_nm', 'fep_ne')
+ebc_ctx <- antibiotic_selector('EBC',data_summary_df,'ctx_nd30', 'ctx_nm', 'ctx_ne')
+ebc_fox <- antibiotic_selector('EBC',data_summary_df,'fox_nd30', 'fox_nm', 'fox_ne')
+ebc_caz <- antibiotic_selector('EBC',data_summary_df,'caz_nd30', 'caz_nm', 'caz_ne')
+ebc_cro <- antibiotic_selector('EBC',data_summary_df,'cro_nd30', 'cro_nm', 'cro_ne')
+ebc_cxm <- antibiotic_selector('EBC',data_summary_df,'cxm_nd30', 'cxm_nm', 'cxm_ne')
+ebc_cip <- antibiotic_selector('EBC',data_summary_df,'cip_nd5', 'cip_nm', 'cip_ne')
+ebc_etp <- antibiotic_selector('EBC',data_summary_df,'etp_nd10', 'etp_nm', 'etp_ne')
+ebc_gen <- antibiotic_selector('EBC',data_summary_df,'gen_nd10', 'gen_nm', 'gen_ne')
+ebc_ipm <- antibiotic_selector('EBC',data_summary_df,'ipm_nd10', 'ipm_nm', 'ipm_ne')
+ebc_mem <- antibiotic_selector('EBC',data_summary_df,'mem_nd10', 'mem_nm', 'mem_ne')
+ebc_tzp <- antibiotic_selector('EBC',data_summary_df,'tzp_nd100', 'tzp_nm', 'tzp_ne')
+ebc_tcy <- antibiotic_selector('EBC',data_summary_df,'tcy_nd30', 'tcy_nm', 'tcy_ne')
+ebc_tob <- antibiotic_selector('EBC',data_summary_df,'tob_nd10', 'tob_nm', 'tob_ne')
+ebc_sxt <- antibiotic_selector('EBC',data_summary_df,'sxt_nd1_2', 'sxt_nm', 'sxt_ne')
+ebc_col <- antibiotic_selector('EBC',data_summary_df,'col_nd10', 'col_nm', 'col_ne')
+
+#calculating total antibiotic tested and percentage (EBC)
+ebc_total <- antibiotic_tested_total(c(ebc_amk$at_pc,ebc_amc$at_pc,ebc_amp$at_pc,ebc_atm$at_pc,ebc_czo$at_pc,ebc_fep$at_pc,ebc_ctx$at_pc,ebc_fox$at_pc,ebc_caz$at_pc,ebc_cro$at_pc,ebc_cxm$at_pc,ebc_cip$at_pc,ebc_etp$at_pc,ebc_gen$at_pc,ebc_ipm$at_pc,ebc_mem$at_pc,ebc_tzp$at_pc,ebc_tcy$at_pc,ebc_tob$at_pc,ebc_sxt$at_pc,ebc_col$at_pc))
+
+
+#additional for urine
+ebc_czo_ur <- antibiotic_selector('EBC',data_summary_df,'czo_nd30', 'czo_nm', 'czo_ne')
+ebc_nit_ur <- antibiotic_selector('EBC',data_summary_df,'nit_nd300', 'nit_nm', 'nit_ne')
+
+#Salmonella & Shigella
+sal_shi_amc <- antibiotic_selector('SAL_SHI',data_summary_df,'amc_nd20', 'amc_nm', 'amc_ne')
+sal_shi_amp <- antibiotic_selector('SAL_SHI',data_summary_df,'amp_nd10', 'amp_nm', 'amp_ne')
+sal_shi_atm <- antibiotic_selector('SAL_SHI',data_summary_df,'atm_nd30', 'atm_nm', 'atm_ne')
+sal_shi_fep <- antibiotic_selector('SAL_SHI',data_summary_df,'fep_nd30', 'fep_nm', 'fep_ne')
+sal_shi_ctx <- antibiotic_selector('SAL_SHI',data_summary_df,'ctx_nd30', 'ctx_nm', 'ctx_ne')
+sal_shi_fox <- antibiotic_selector('SAL_SHI',data_summary_df,'fox_nd30', 'fox_nm', 'fox_ne')
+sal_shi_cro <- antibiotic_selector('SAL_SHI',data_summary_df,'cro_nd30', 'cro_nm', 'cro_ne')
+sal_shi_chl <- antibiotic_selector('SAL_SHI',data_summary_df,'chl_nd30', 'chl_nm', 'chl_ne')
+sal_shi_cip <- antibiotic_selector('SAL_SHI',data_summary_df,'cip_nd5', 'cip_nm', 'cip_ne')
+sal_shi_etp <- antibiotic_selector('SAL_SHI',data_summary_df,'etp_nd10', 'etp_nm', 'etp_ne')
+sal_shi_ipm <- antibiotic_selector('SAL_SHI',data_summary_df,'ipm_nd10', 'ipm_nm', 'ipm_ne')
+sal_shi_sxt <- antibiotic_selector('SAL_SHI',data_summary_df,'sxt_nd1_2', 'sxt_nm', 'sxt_ne')
+
+#additional antibiotics
+sal_shi_azm_add <- additional_antibiotic_selector('SAL_SHI',data_summary_df,'azm_nd15','azm_nm','azm_ne')
+
+
+#calculating total antibiotic tested and percentage (SAL_SHI)
+sal_shi_total <- antibiotic_tested_total(c(sal_shi_amc$at_pc,sal_shi_amp$at_pc,sal_shi_atm$at_pc,sal_shi_fep$at_pc,sal_shi_ctx$at_pc,sal_shi_fox$at_pc,sal_shi_cro$at_pc,sal_shi_chl$at_pc,sal_shi_cip$at_pc,sal_shi_etp$at_pc,sal_shi_ipm$at_pc,sal_shi_sxt$at_pc))
+
+
+#Acinetobacter sp.
+ac_amk <- antibiotic_selector('AC',data_summary_df,'amk_nd30', 'amk_nm', 'amk_ne')
+ac_sam <- antibiotic_selector('AC',data_summary_df,'sam_nd10', 'sam_nm', 'sam_ne')
+ac_fep <- antibiotic_selector('AC',data_summary_df,'fep_nd30', 'fep_nm', 'fep_ne')
+ac_caz <- antibiotic_selector('AC',data_summary_df,'caz_nd30', 'caz_nm', 'caz_ne')
+ac_ctx <- antibiotic_selector('AC',data_summary_df,'ctx_nd30', 'ctx_nm', 'ctx_ne')
+ac_cro <- antibiotic_selector('AC',data_summary_df,'cro_nd30', 'cro_nm', 'cro_ne')
+ac_cip <- antibiotic_selector('AC',data_summary_df,'cip_nd5', 'cip_nm', 'cip_ne')
+ac_col <- antibiotic_selector('AC',data_summary_df,'col_nd10', 'col_nm', 'col_ne')
+ac_ipm <- antibiotic_selector('AC',data_summary_df,'ipm_nd10', 'ipm_nm', 'ipm_ne')
+ac_mem <- antibiotic_selector('AC',data_summary_df,'mem_nd10', 'mem_nm', 'mem_ne')
+ac_mno <- antibiotic_selector('AC',data_summary_df,'mno_nd30', 'mno_nm', 'mno_ne')
+ac_gen <- antibiotic_selector('AC',data_summary_df,'gen_nd10', 'gen_nm', 'gen_ne')
+ac_tzp <- antibiotic_selector('AC',data_summary_df,'tzp_nd100', 'tzp_nm', 'tzp_ne')
+ac_tob <- antibiotic_selector('AC',data_summary_df,'tob_nd10', 'tob_nm', 'tob_ne')
+ac_sxt <- antibiotic_selector('AC',data_summary_df,'sxt_nd1_2', 'sxt_nm', 'sxt_ne')
+
+#calculating total antibiotic tested and percentage (AC)
+ac_total <- antibiotic_tested_total(c(ac_amk$at_pc,ac_sam$at_pc,ac_fep$at_pc,ac_caz$at_pc,ac_ctx$at_pc,ac_cro$at_pc,ac_cip$at_pc,ac_col$at_pc,ac_ipm$at_pc,ac_mem$at_pc,ac_mno$at_pc,ac_gen$at_pc,ac_tzp$at_pc,ac_tob$at_pc,ac_sxt$at_pc))
+
+
+
+#additional for urine
+ac_tcy_ur <- antibiotic_selector('AC',data_summary_df,'tcy_nd30', 'tcy_nm', 'tcy_ne')
+
+#Pseudomonas aeruginosa
+pae_amk <- antibiotic_selector('PAE',data_summary_df,'amk_nd30', 'amk_nm', 'amk_ne')
+pae_atm <- antibiotic_selector('PAE',data_summary_df,'atm_nd30', 'atm_nm', 'atm_ne')
+pae_fep <- antibiotic_selector('PAE',data_summary_df,'fep_nd30', 'fep_nm', 'fep_ne')
+pae_caz <- antibiotic_selector('PAE',data_summary_df,'caz_nd30', 'caz_nm', 'caz_ne')
+pae_cip <- antibiotic_selector('PAE',data_summary_df,'cip_nd5', 'cip_nm', 'cip_ne')
+pae_col <- antibiotic_selector('PAE',data_summary_df,'col_nd10', 'col_nm', 'col_ne')
+pae_ipm <- antibiotic_selector('PAE',data_summary_df,'ipm_nd10', 'ipm_nm', 'ipm_ne')
+pae_lvx <- antibiotic_selector('PAE',data_summary_df,'lvx_nd5', 'lvx_nm', 'lvx_ne')
+pae_mem <- antibiotic_selector('PAE',data_summary_df,'mem_nd10', 'mem_nm', 'mem_ne')
+pae_gen <- antibiotic_selector('PAE',data_summary_df,'gen_nd10', 'gen_nm', 'gen_ne')
+pae_tzp <- antibiotic_selector('PAE',data_summary_df,'tzp_nd100', 'tzp_nm', 'tzp_ne')
+pae_tob <- antibiotic_selector('PAE',data_summary_df,'tob_nd10', 'tob_nm', 'tob_ne')
+
+#calculating total antibiotic tested and percentage (PAE)
+pae_total <- antibiotic_tested_total(c(pae_amk$at_pc,pae_atm$at_pc,pae_fep$at_pc,pae_caz$at_pc,pae_cip$at_pc,pae_col$at_pc,pae_ipm$at_pc,pae_lvx$at_pc,pae_mem$at_pc,pae_gen$at_pc,pae_tzp$at_pc,pae_tob$at_pc))
+
+
+#Haemophilus influenzae* and *Haemophilus parainfluenzae
+hpi_hin_amc <- antibiotic_selector('HPI_HIN',data_summary_df,'amc_nd20', 'amc_nm', 'amc_ne')
+hpi_hin_amp <- antibiotic_selector('HPI_HIN',data_summary_df,'amp_nd10', 'amp_nm', 'amp_ne')
+hpi_hin_sam <- antibiotic_selector('HPI_HIN',data_summary_df,'sam_nd10', 'sam_nm', 'sam_ne')
+hpi_hin_azm <- antibiotic_selector('HPI_HIN',data_summary_df,'azm_nd15', 'azm_nm', 'azm_ne')
+hpi_hin_cro <- antibiotic_selector('HPI_HIN',data_summary_df,'cro_nd30', 'cro_nm', 'cro_ne')
+hpi_hin_cip <- antibiotic_selector('HPI_HIN',data_summary_df,'cip_nd5', 'cip_nm', 'cip_ne') #or
+hpi_hin_lvx <- antibiotic_selector('HPI_HIN',data_summary_df,'lvx_nd5', 'lvx_nm', 'lvx_ne')
+hpi_hin_mem <- antibiotic_selector('HPI_HIN',data_summary_df,'mem_nd10', 'mem_nm', 'mem_ne')
+hpi_hin_tcy <- antibiotic_selector('HPI_HIN',data_summary_df,'tcy_nd30', 'tcy_nm', 'tcy_ne')
+hpi_hin_sxt <- antibiotic_selector('HPI_HIN',data_summary_df,'sxt_nd1_2', 'sxt_nm', 'sxt_ne')
+
+if (hpi_hin_cip$at_sum != 0){
+  hpi_hin_cip_lvx_sum <- hpi_hin_cip$at_sum
+  hpi_hin_cip_lvx_cp <- hpi_hin_cip$at_pc
+}else{
+  hpi_hin_cip_lvx_sum <- hpi_hin_lvx$at_sum
+  hpi_hin_cip_lvx_cp <- hpi_hin_lvx$at_pc
+}
+
+
+#calculating total antibiotic tested and percentage (HPI_HIN)
+hpi_hin_total <- antibiotic_tested_total(c(hpi_hin_amc$at_pc,hpi_hin_amp$at_pc,hpi_hin_sam$at_pc,hpi_hin_azm$at_pc,hpi_hin_cro$at_pc,hpi_hin_cip_lvx_cp,hpi_hin_mem$at_pc,hpi_hin_tcy$at_pc,hpi_hin_sxt$at_pc))
+
+
+#Neisseria gonorrhoeae
+ngo_azm <- antibiotic_selector('NGO',data_summary_df,'azm_nd15', 'azm_nm', 'azm_ne')
+ngo_cfm <- antibiotic_selector('NGO',data_summary_df,'cfm_nd5', 'cfm_nm', 'cfm_ne')
+ngo_cro <- antibiotic_selector('NGO',data_summary_df,'cro_nd30', 'cro_nm', 'cro_ne')
+ngo_cip <- antibiotic_selector('NGO',data_summary_df,'cip_nd5', 'cip_nm', 'cip_ne')
+ngo_gen <- antibiotic_selector('NGO',data_summary_df,'gen_nd10', 'gen_nm', 'gen_ne')
+ngo_nal <- antibiotic_selector('NGO',data_summary_df,'nal_nd30', 'nal_nm', 'nal_ne')
+ngo_spt <- antibiotic_selector('NGO',data_summary_df,'spt_nd100', 'spt_nm', 'spt_ne')
+ngo_tcy <- antibiotic_selector('NGO',data_summary_df,'tcy_nd30', 'tcy_nm', 'tcy_ne')
+
+#calculating total antibiotic tested and percentage (NGO)
+ngo_total <- antibiotic_tested_total(c(ngo_azm$at_pc,ngo_cfm$at_pc,ngo_cro$at_pc,ngo_cip$at_pc,ngo_gen$at_pc,ngo_nal$at_pc,ngo_spt$at_pc,ngo_tcy$at_pc))
+
+
+#Streptococcus pneumoniae
+spn_cro <- antibiotic_selector('SPN',data_summary_df,'cro_nd30', 'cro_nm', 'cro_ne')
+spn_cli <- antibiotic_selector('SPN',data_summary_df,'cli_nd2', 'cli_nm', 'cli_ne')
+spn_ery <- antibiotic_selector('SPN',data_summary_df,'ery_nd15', 'ery_nm', 'ery_ne')
+spn_ipm <- antibiotic_selector('SPN',data_summary_df,'ipm_nd10', 'ipm_nm', 'ipm_ne')
+spn_lvx <- antibiotic_selector('SPN',data_summary_df,'lvx_nd5', 'lvx_nm', 'lvx_ne')
+spn_lnz <- antibiotic_selector('SPN',data_summary_df,'lnz_nd30', 'lnz_nm', 'lnz_ne')
+spn_mem <- antibiotic_selector('SPN',data_summary_df,'mem_nd10', 'mem_nm', 'mem_ne')
+spn_oxa <- antibiotic_selector('SPN',data_summary_df,'oxa_nd1', 'oxa_nm', 'oxa_ne')
+spn_pen <- antibiotic_selector('SPN',data_summary_df,'pen_nd10', 'pen_nm', 'pen_ne')
+spn_rif <- antibiotic_selector('SPN',data_summary_df,'rif_nd5', 'rif_nm', 'rif_ne')
+spn_tcy <- antibiotic_selector('SPN',data_summary_df,'tcy_nd30', 'tcy_nm', 'tcy_ne')
+spn_sxt <- antibiotic_selector('SPN',data_summary_df,'sxt_nd1_2', 'sxt_nm', 'sxt_ne')
+spn_van <- antibiotic_selector('SPN',data_summary_df,'van_nd30', 'van_nm', 'van_ne')
+
+#calculating total antibiotic tested and percentage (SPN)
+spn_total <- antibiotic_tested_total(c(spn_cro$at_pc,spn_cli$at_pc,spn_ery$at_pc,spn_ipm$at_pc,spn_lvx$at_pc,spn_lnz$at_pc,spn_mem$at_pc,spn_oxa$at_pc,spn_pen$at_pc,spn_rif$at_pc,spn_tcy$at_pc,spn_sxt$at_pc,spn_van$at_pc))
+
+
+#Enterococcus sp.
+ent_amp <- antibiotic_selector('ENT',data_summary_df,'amp_nd10', 'amp_nm', 'amp_ne')
+ent_dap <- antibiotic_selector('ENT',data_summary_df,'dap_nd30', 'dap_nm', 'dap_ne')
+ent_geh <- antibiotic_selector('ENT',data_summary_df,'geh_nd120', 'geh_nm', 'geh_ne')
+ent_lnz <- antibiotic_selector('ENT',data_summary_df,'lnz_nd30', 'lnz_nm', 'lnz_ne')
+ent_pen <- antibiotic_selector('ENT',data_summary_df,'pen_nd10', 'pen_nm','pen_ne')
+ent_sth <- antibiotic_selector('ENT',data_summary_df,'sth_nd300', 'sth_nm', 'sth_ne')
+ent_van <- antibiotic_selector('ENT',data_summary_df,'van_nd30', 'van_nm', 'van_ne')
+
+
+#calculating total antibiotic tested and percentage (ENT)
+ent_total <- antibiotic_tested_total(c(ent_amp$at_pc,ent_dap$at_pc,ent_geh$at_pc,ent_lnz$at_pc,ent_pen$at_pc,ent_sth$at_pc,ent_van$at_pc))
+
+#additional for urine
+ent_cro_ur <- antibiotic_selector('ENT',data_summary_df,'cip_nd5', 'cip_nm', 'cip_ne')
+ent_lvx_ur <- antibiotic_selector('ENT',data_summary_df,'lvx_nd5', 'lvx_nm', 'lvx_ne')
+ent_nit_ur <- antibiotic_selector('ENT',data_summary_df,'nit_nd300', 'nit_nm', 'nit_ne')
+ent_tcy_ur <- antibiotic_selector('ENT',data_summary_df,'tcy_nd30', 'tcy_nm', 'tcy_ne')
+
+
+
+#Staphylococcus sp.
+sta_fox <- antibiotic_selector('STA',data_summary_df,'fox_nd30', 'fox_nm', 'fox_ne')
+sta_cip <- antibiotic_selector('STA',data_summary_df,'cip_nd5', 'cip_nm', 'cip_ne')
+sta_cli <- antibiotic_selector('STA',data_summary_df,'cli_nd2', 'cli_nm', 'cli_ne')
+sta_dap <- antibiotic_selector('STA',data_summary_df,'dap_nd30', 'dap_nm', 'dap_ne')
+sta_ery <- antibiotic_selector('STA',data_summary_df,'ery_nd15', 'ery_nm', 'ery_ne')
+sta_lnz <- antibiotic_selector('STA',data_summary_df,'lnz_nd30', 'lnz_nm', 'lnz_ne')
+sta_oxa <- antibiotic_selector('STA',data_summary_df,'oxa_nd1', 'oxa_nm', 'oxa_ne')
+sta_pen <- antibiotic_selector('STA',data_summary_df,'pen_nd10', 'pen_nm', 'pen_ne')
+sta_rif <- antibiotic_selector('STA',data_summary_df,'rif_nd5', 'rif_nm', 'rif_ne')
+sta_tcy <- antibiotic_selector('STA',data_summary_df,'tcy_nd30', 'tcy_nm', 'tcy_ne')
+sta_sxt <- antibiotic_selector('STA',data_summary_df,'sxt_nd1_2', 'sxt_nm', 'sxt_ne')
+sta_van <- antibiotic_selector('STA',data_summary_df,'van_nd30', 'van_nm', 'van_ne')
+sta_nit_ur <- antibiotic_selector('STA',data_summary_df,'nit_nd300', 'nit_nm', 'nit_ne')
+
+#calculating total antibiotic tested and percentage (STA)
+sta_total <- antibiotic_tested_total(c(sta_fox$at_pc,sta_cip$at_pc,sta_cli$at_pc,sta_dap$at_pc,sta_ery$at_pc,sta_lnz$at_pc,sta_oxa$at_pc,sta_pen$at_pc,sta_rif$at_pc,sta_tcy$at_pc,sta_sxt$at_pc,sta_van$at_pc,sta_nit_ur$at_pc))
+
+
+#Burkholderia cepacia
+pce_caz <- antibiotic_selector('PCE',data_summary_df,'caz_nd30', 'caz_nm', 'caz_ne')
+pce_chl <- antibiotic_selector('PCE',data_summary_df,'chl_nd30', 'chl_nm', 'chl_ne')
+pce_lvx <- antibiotic_selector('PCE',data_summary_df,'lvx_nd5', 'lvx_nm', 'lvx_ne')
+pce_mem <- antibiotic_selector('PCE',data_summary_df,'mem_nd10', 'mem_nm', 'mem_ne')
+pce_mno <- antibiotic_selector('PCE',data_summary_df,'mno_nd30', 'mno_nm', 'mno_ne')
+pce_sxt <- antibiotic_selector('PCE',data_summary_df,'sxt_nd1_2', 'sxt_nm', 'sxt_ne')
+
+#calculating total antibiotic tested and percentage (PCE)
+pce_total <- antibiotic_tested_total(c(pce_caz$at_pc,pce_chl$at_pc,pce_lvx$at_pc,pce_mem$at_pc,pce_mno$at_pc,pce_sxt$at_pc))
+
+
+#Stenotrophomonas maltophilia
+pma_caz <- antibiotic_selector('PMA',data_summary_df,'caz_nd30', 'caz_nm', 'caz_ne')
+pma_chl <- antibiotic_selector('PMA',data_summary_df,'chl_nd30', 'chl_nm', 'chl_ne')
+pma_lvx <- antibiotic_selector('PMA',data_summary_df,'lvx_nd5', 'lvx_nm', 'lvx_ne')
+pma_mno <- antibiotic_selector('PMA',data_summary_df,'mno_nd30', 'mno_nm', 'mno_ne')
+pma_sxt <- antibiotic_selector('PMA',data_summary_df,'sxt_nd1_2', 'sxt_nm', 'sxt_ne')
+
+#calculating total antibiotic tested and percentage (PMA)
+pma_total <- antibiotic_tested_total(c(pma_caz$at_pc,pma_chl$at_pc,pma_lvx$at_pc,pma_mno$at_pc,pma_sxt$at_pc))
+
+
+#Streptococcus viridans group
+svi_amp <- antibiotic_selector('SVI',data_summary_df,'amp_nd10', 'amp_nm', 'amp_ne')
+svi_fep <- antibiotic_selector('SVI',data_summary_df,'fep_nd30', 'fep_nm', 'fep_ne')
+svi_ctx <- antibiotic_selector('SVI',data_summary_df,'ctx_nd30', 'ctx_nm', 'ctx_ne')
+svi_cro <- antibiotic_selector('SVI',data_summary_df,'cro_nd30', 'cro_nm', 'cro_ne')
+svi_chl <- antibiotic_selector('SVI',data_summary_df,'chl_nd30', 'chl_nm', 'chl_ne')
+svi_cli <- antibiotic_selector('SVI',data_summary_df,'cli_nd2', 'cli_nm', 'cli_ne')
+svi_ery <- antibiotic_selector('SVI',data_summary_df,'ery_nd15', 'ery_nm', 'ery_ne')
+svi_lnz <- antibiotic_selector('SVI',data_summary_df,'lnz_nd30', 'lnz_nm', 'lnz_ne')
+svi_pen <- antibiotic_selector('SVI',data_summary_df,'pen_nd10', 'pen_nm', 'pen_ne')
+svi_van <- antibiotic_selector('SVI',data_summary_df,'van_nd30', 'van_nm', 'van_ne')
+
+#calculating total antibiotic tested and percentage (SVI)
+svi_total <- antibiotic_tested_total(c(svi_amp$at_pc,svi_fep$at_pc,svi_ctx$at_pc,svi_cro$at_pc,svi_chl$at_pc,svi_cli$at_pc,svi_ery$at_pc,svi_lnz$at_pc,svi_pen$at_pc,svi_van$at_pc))
+
+
+#Beta-Hemolytic Streptococci
+bs_amp <- antibiotic_selector('BS',data_summary_df,'amp_nd10', 'amp_nm', 'amp_ne') #or
+bs_pen <- antibiotic_selector('BS',data_summary_df,'pen_nd10', 'pen_nm', 'pen_ne')
+bs_fep <- antibiotic_selector('BS',data_summary_df,'fep_nd30', 'fep_nm', 'fep_ne')#or
+bs_ctx <- antibiotic_selector('BS',data_summary_df,'ctx_nd30', 'ctx_nm', 'ctx_ne')#or
+bs_cro <- antibiotic_selector('BS',data_summary_df,'cro_nd30', 'cro_nm', 'cro_ne')
+bs_chl <- antibiotic_selector('BS',data_summary_df,'chl_nd30', 'chl_nm', 'chl_ne')
+bs_cli <- antibiotic_selector('BS',data_summary_df,'cli_nd2', 'cli_nm', 'cli_ne')
+bs_dap <- antibiotic_selector('BS',data_summary_df,'dap_nd30', 'dap_nm', 'dap_ne')
+bs_ery <- antibiotic_selector('BS',data_summary_df,'ery_nd15', 'ery_nm', 'ery_ne')
+bs_lvx <- antibiotic_selector('BS',data_summary_df,'lvx_nd5', 'lvx_nm', 'lvx_ne')
+bs_lnz <- antibiotic_selector('BS',data_summary_df,'lnz_nd30', 'lnz_nm', 'lnz_ne')
+bs_van <- antibiotic_selector('BS',data_summary_df,'van_nd30', 'van_nm', 'van_ne')
+
+
+if (bs_amp$at_sum != 0){
+  bs_amp_pen_sum <- bs_amp$at_sum
+  bs_amp_pen_cp <- bs_amp$at_pc
+}else{
+  bs_amp_pen_sum <- bs_pen$at_sum
+  bs_amp_pen_cp <- bs_pen$at_pc
+}
+
+  
+if (bs_fep$at_sum != 0) {
+  bs_fep_ctx_cro_sum <- bs_fep$at_sum
+  bs_fep_ctx_cro_cp <- bs_fep$at_pc
+} else if (bs_ctx$at_sum != 0) {
+  bs_fep_ctx_cro_sum <- bs_ctx$at_sum
+  bs_fep_ctx_cro_cp <- bs_ctx$at_pc
+} else
+  bs_fep_ctx_cro_sum <- bs_cro$at_sum
+  bs_fep_ctx_cro_cp <- bs_cro$at_pc
+
+
+#calculating total antibiotic tested and percentage (HPI_HIN)
+bs_total <- antibiotic_tested_total(c(bs_amp_pen_cp,bs_fep_ctx_cro_cp,bs_chl$at_pc,bs_cli$at_pc,bs_dap$at_pc,bs_ery$at_pc,bs_lvx$at_pc,bs_lnz$at_pc,bs_van$at_pc))
+```
+
+```{r part2_df, echo=FALSE, message=FALSE, warning=FALSE}
+at_column <- c("ENTEROBACTERIACEAE except Salmonella & Shigella species","Acinetobacter sp.","Burkholderia cepacia", "Pseudomonas aeruginosa","Haemophilus influenzae and Haemophilus parainfluenzae" ,"Salmonella & Shigella species","Enterococcus sp.","Neisseria gonorrhoeae","Streptococcus pneumoniae","Staphylococcus sp.","Stenotrophomonas maltophilia","Beta-Hemolytic Streptococci","Streptococcus viridans group")
+
+num_isolate <- c(ebc_amk$tl,ac_amk$tl,pce_caz$tl,pae_amk$tl,hpi_hin_amc$tl,sal_shi_amc$tl,ent_amp$tl,ngo_azm$tl,spn_cro$tl,sta_fox$tl,pma_caz$tl,bs_chl$tl,svi_amp$tl)
+
+at_pct <- c(ebc_total$at_tested_pc,ac_total$at_tested_pc,pce_total$at_tested_pc,pae_total$at_tested_pc,hpi_hin_total$at_tested_pc,sal_shi_total$at_tested_pc,ent_total$at_tested_pc,ngo_total$at_tested_pc,spn_total$at_tested_pc,sta_total$at_tested_pc,pma_total$at_tested_pc,bs_total$at_tested_pc,svi_total$at_tested_pc)
+at_pct <- paste(at_pct,"%")
+
+at_monitoring_df <- data.frame(at_column,num_isolate,at_pct)
+at_monitoring_df <- filter_if(at_monitoring_df, is.numeric, all_vars((.) != 0))
+
+```
+
+```{r other_pheno, echo=FALSE, message=FALSE, warning=FALSE}
+
+#Other Phenotypic Test
+
+phenotypic_test <- function(main_df,org){
+  tl_pheno <- nrow(main_df[main_df$organism %in% org, ])
+  df_pheno <- main_df[main_df$organism %in% org, ]
+  df_esbl <- df_pheno[!is.na(df_pheno$esbl), ]
+  df_mrsa <- df_pheno[!is.na(df_pheno$mrsa), ]
+  
+  #positive_esbl <- nrow(df_pheno[df_pheno$esbl == '+', ])
+  
+  positive_esbl <- nrow(df_esbl[df_esbl$esbl == '+', ])
+  pct_positive_esbl <- (positive_esbl/ tl_pheno) * 100
+  pct_positive_esbl <- format(round(pct_positive_esbl, 2), nsmall = 2)
+  negative_esbl <- nrow(df_esbl[df_esbl$esbl == '-', ])
+  pct_negative_esbl <- (negative_esbl/ tl_pheno) * 100
+  pct_negative_esbl <- format(round(pct_negative_esbl, 2), nsmall = 2)
+  
+  positive_mrsa <- nrow(df_mrsa[df_mrsa$mrsa == '+', ])
+  pct_positive_mrsa <- (positive_mrsa/ tl_pheno) * 100
+  pct_positive_mrsa <- format(round(pct_positive_mrsa, 2), nsmall = 2)
+  negative_mrsa <- nrow(df_mrsa[df_mrsa$mrsa == '-', ])
+  pct_negative_mrsa <- (negative_mrsa/ tl_pheno) * 100
+  pct_negative_mrsa <- format(round(pct_negative_mrsa, 2), nsmall = 2)
+  
+  
+  
+  return(list(tl_pheno = tl_pheno, positive_esbl = positive_esbl, negative_esbl = negative_esbl,positive_mrsa = positive_mrsa, negative_mrsa = negative_mrsa, pct_positive_esbl = pct_positive_esbl, pct_negative_esbl = pct_negative_esbl, pct_positive_mrsa = pct_positive_mrsa, pct_negative_mrsa = pct_negative_mrsa))
+}
+
+phenotypic_test_total <- function(phenotypic_pc){
+  pheno_tested <- as.numeric(phenotypic_pc)
+  pheno_tested_pc <- mean(pheno_tested)
+  #ebc_tested_pc <- if (ebc_tested_sum != 0) (ebc_tested_sum/ebc_amk$tl) else 0
+  pheno_tested_pc <- format(round(pheno_tested_pc, 2), nsmall = 2)
+  
+  return(list(pheno_tested_pc = pheno_tested_pc))
+}
+
+
+#ESBL
+eco_esbl <- phenotypic_test(data_summary_df,'eco')
+kpn_esbl <- phenotypic_test(data_summary_df,'kpn')
+
+eco_esbl_tl <- as.numeric(eco_esbl$pct_positive_esbl) + as.numeric(eco_esbl$pct_negative_esbl)
+kpn_esbl_tl <- as.numeric(kpn_esbl$pct_positive_esbl) + as.numeric(kpn_esbl$pct_negative_esbl)
+
+esbl_total <- (eco_esbl_tl + kpn_esbl_tl) / 2
+esbl_total <- format(round(esbl_total, 2), nsmall = 2)
+
+
+#esbl_total <- phenotypic_test_total(c(eco_esbl$pct_positive_esbl,kpn_esbl$pct_positive_esbl,eco_esbl$pct_negative_esbl,kpn_esbl$pct_negative_esbl))
+
+#MRSA
+sau_mrsa <- phenotypic_test(data_summary_df,'sau')
+
+mrsa_total <- (as.numeric(sau_mrsa$pct_positive_mrsa) + as.numeric(sau_mrsa$pct_negative_mrsa))
+mrsa_total <- format(round(mrsa_total, 2), nsmall = 2)
+```
+
+```{r Referred DF, echo=FALSE, message=FALSE, warning=FALSE}
+#Referral Days
+file_year <- paste(f_year,f_month,"01", sep="/")
+file_year <- as.Date(file_year)
+
+spec_date_ref <- format(as.Date(data_summary_clean$spec_date), "%d/%m/%Y")
+spec_date_ref <- as.Date(spec_date_ref, "%d/%m/%Y")
+data_summary_clean$date_diff <- difftime(spec_date_ref, file_year, units = "days") 
+#referred_df <- data_summary_df[!is.na(data_summary_df$date_diff), ]
+
+#Urine count
+data_summary_clean$urine_count <- as.numeric(gsub("[^[:alnum:]]", "", data_summary_clean$urine_count))
+referred_uc <- subset(data_summary_clean, data_summary_clean$urine_count > 10000 | is.na(data_summary_clean$urine_count))
+
+```
+
+```{r referred_functions, echo=FALSE, message=FALSE, warning=FALSE}
+#Refer sterile and non-sterile samples
+sample_path <- "Excel/SPCLIST_group.xlsx"
+sample_selector <- function(df,sheet_name){
+  ss_df <- read_xlsx(sample_path, sheet = sheet_name)
+  vec <- na.omit(ss_df[['C_ENGLISH']])
+
+  return(list(vec = vec))
+}
+
+
+#Reading data file for antibiotics
+antibiotic_path <- "Excel/whonet_data_summary_referred.xlsx"
+
+antibiotic_list <- function(sheet_name){
+  rs_df <- read_xlsx(antibiotic_path, sheet = sheet_name)
+  #eco_ra_r <- referred_all_r(df_eco, paste(eco_rs_a_r$rs_vec,'ris', sep = '_'))
+  rs_vec <- rs_df[['WHON5_CODE_LW']]
+  rs_vec <- paste(rs_vec,'ris', sep = '_')
+  
+  return(list(rs_vec = rs_vec))
+}
+
+
+referral_selector <- function(sheet_name,ref_days,ris_result){
+  rs_df <- read_xlsx(antibiotic_path, sheet = sheet_name)
+  rs_df <- rs_df[rs_df$REF_DAYS == ref_days & rs_df$RIS == ris_result, ]
+  rs_vec <- rs_df[['WHON5_CODE_LW']]
+
+  #return(data.frame(rs_df))
+  return(list(data.frame(rs_df), rs_vec = rs_vec))
+}
+
+
+#Refer all regardless of collection date (Resistant)
+referred_all_r <- function(df, antibiotics){
+  df <- df %>% 
+    filter(if_any(antibiotics, ~ .x == 'R'))
+  
+  return(data.frame(df))
+}
+
+#Refer all regardless of collection date (Resistant to Lipopetides)
+referred_lipo_r <- function(df,at_value, antibiotics){
+  df <- df %>% 
+    filter(if_any(antibiotics, ~ .x == 'R') & if_any(at_value, ~ .x == '>4'))
+  
+  return(data.frame(df))
+}
+
+referred_all_b <- function(df, antibiotics){
+  df <- df %>% 
+    filter(if_any(antibiotics, ~ .x == 'R'))
+  
+  return(data.frame(df))
+}
+
+#Refer all regardless of collection date (Resistant/Intermediate)
+referred_all_ri <- function(df, antibiotics){
+  df <- df %>% 
+    filter(if_any(antibiotics, ~ .x == 'R') | if_any(antibiotics, ~ .x == 'I'))
+  
+  return(data.frame(df))
+}
+
+#Refer all regardless of collection date (Resistant/Intermediate/SDD)
+referred_all_sd <- function(df, antibiotics){
+  df <- df %>% 
+    filter(if_any(antibiotics, ~ .x == 'R') | if_any(antibiotics, ~ .x == 'I')| if_any(antibiotics, ~ .x == 'SDD'))
+  
+  return(data.frame(df))
+}
+
+referred_all_ns_ir <- function(df, antibiotics){
+  df <- df %>% 
+    filter(if_any(antibiotics, ~ .x == 'R') | if_any(antibiotics, ~ .x == 'I')| if_any(antibiotics, ~ .x == 'NS'))
+  
+  return(data.frame(df))
+}
+
+referred_all_ns <- function(df, antibiotics){
+  df <- df %>% 
+    filter(if_any(antibiotics, ~ .x == 'NS'))
+  
+  return(data.frame(df))
+}
+
+referred_all_ns_r <- function(df, antibiotics){
+  df <- df %>% 
+    filter(if_any(antibiotics, ~ .x == 'NS') | if_any(antibiotics, ~ .x == 'R'))
+  
+  return(data.frame(df))
+}
+
+
+referred_all_esbl <- function(df, esbl){
+  df <- df %>% 
+    filter(if_any(esbl, ~ .x == '+'))
+  
+  return(data.frame(df))
+}
+
+
+#Refer first isolate per patient days 1 to 3 days (Resistant)
+referred_first_r <- function(df,antibiotics){
+  df <- df[df$date_diff <= 3, ]
+  df <- df %>% 
+    filter(if_any(antibiotics, ~ .x == 'R'))
+  
+  return(data.frame(df))
+}
+
+#Refer first isolate per patient days 1 to 3 days (Resistant/Intermediate)
+referred_first_ri <- function(df,antibiotics){
+  df <- df[df$date_diff <= 3, ]
+  df <- df %>% 
+    filter(if_any(antibiotics, ~ .x == 'R') | if_any(antibiotics, ~ .x == 'I'))
+  
+  return(data.frame(df))
+}
+
+#Refer first isolate per patient days 1 to 3 days (Resistant/Intermediate/SDD)
+referred_first_sd <- function(df,antibiotics){
+  df <- df[df$date_diff <= 3, ]
+  df <- df %>% 
+    filter(if_any(antibiotics, ~ .x == 'R') | if_any(antibiotics, ~ .x == 'I')| if_any(antibiotics, ~ .x == 'SDD'))
+  
+  return(data.frame(df))
+}
+
+referred_first_ns <- function(df, antibiotics){
+  df <- df[df$date_diff <= 3, ]
+  df <- df %>% 
+    filter(if_any(antibiotics, ~ .x == 'NS'))
+  
+  return(data.frame(df))
+}
+
+
+#Refer first isolate per patient days 1 to 3 days (ESBL)
+referred_first_esbl <- function(df, esbl){
+  df <- df[df$date_diff <= 3, ]
+  df <- df %>% 
+    filter(if_any(esbl, ~ .x == '+'))
+  
+  return(data.frame(df))
+}
+
+```
+
+```{r eco_unusual, echo=FALSE, message=FALSE, warning=FALSE}
+#ECO
+df_eco <- referred_uc[referred_uc$organism == 'eco'& referred_uc$x_referred == 0, ]
+eco_sample <- sample_selector('df_eco','eco')
+df_eco <- df_eco[df_eco$spec_type %in% eco_sample$vec, ]
+
+eco_at_list <- antibiotic_list('eco')
+
+#ECO - regardless of date
+eco_rs_lipo_r <- referral_selector('eco','l','r')
+eco_ra_lipo <- referred_lipo_r(df_eco, eco_rs_lipo_r$rs_vec, paste(eco_rs_lipo_r$rs_vec,'ris', sep = '_'))
+
+eco_rs_a_r <- referral_selector('eco','a','r')
+eco_ra_r <- referred_all_r(df_eco, paste(eco_rs_a_r$rs_vec,'ris', sep = '_'))
+
+eco_rs_a_ri <- referral_selector('eco','a','i_r')
+eco_ra_ri <- referred_all_ri(df_eco, paste(eco_rs_a_ri$rs_vec,'ris', sep = '_')) 
+
+#ECO - days 1 to 3 days
+eco_rs_f_r <- referral_selector('eco','f','r')
+eco_fi_r <- referred_first_r(df_eco, paste(eco_rs_f_r$rs_vec,'ris', sep = '_'))
+
+eco_rs_f_ri <- referral_selector('eco','f','i_r')
+eco_fi_ri <- referred_first_ri(df_eco, paste(eco_rs_f_ri$rs_vec,'ris', sep = '_'))
+
+eco_rs_f_sd <- referral_selector('eco','f','i_r_s')
+eco_fi_sd <- referred_first_sd(df_eco, paste(eco_rs_f_sd$rs_vec,'ris', sep = '_'))
+
+eco_fi_esbl <- referred_first_esbl(df_eco,df_eco$esbl)
+
+eco_at <- rbind(eco_ra_lipo,eco_ra_r,eco_ra_ri,eco_fi_r,eco_fi_ri,eco_fi_sd,eco_fi_esbl)
+
+#write.csv(eco_referral_new, file="Excel/eco_unusual.csv")
+```
+
+```{r kpn_unusual, echo=FALSE, message=FALSE, warning=FALSE}
+#KPN
+df_kpn <- referred_uc[referred_uc$organism == 'kpn'& referred_uc$x_referred == 0, ]
+kpn_sample <- sample_selector('df_kpn','kpn')
+df_kpn <- df_kpn[df_kpn$spec_type %in% kpn_sample$vec, ]
+
+kpn_at_list <- antibiotic_list('kpn')
+
+#KPN - regardless of date
+kpn_rs_lipo_r <- referral_selector('kpn','l','r')
+kpn_ra_lipo <- referred_lipo_r(df_kpn, kpn_rs_lipo_r$rs_vec, paste(kpn_rs_lipo_r$rs_vec,'ris', sep = '_'))
+
+kpn_rs_a_r <- referral_selector('kpn','a','r')
+kpn_ra_r <- referred_all_r(df_kpn, paste(kpn_rs_a_r$rs_vec,'ris', sep = '_'))
+
+kpn_rs_a_ri <- referral_selector('kpn','a','i_r')
+kpn_ra_ri <- referred_all_ri(df_kpn, paste(kpn_rs_a_ri$rs_vec,'ris', sep = '_')) 
+
+#KPN - days 1 to 3 months
+kpn_rs_f_r <- referral_selector('kpn','f','r')
+kpn_fi_r <- referred_first_r(df_kpn, paste(kpn_rs_f_r$rs_vec,'ris', sep = '_'))
+
+kpn_rs_f_ri <- referral_selector('kpn','f','i_r')
+kpn_fi_ri <- referred_first_ri(df_kpn, paste(kpn_rs_f_ri$rs_vec,'ris', sep = '_'))
+
+kpn_rs_f_sd <- referral_selector('kpn','f','i_r_s')
+kpn_fi_sd <- referred_first_sd(df_kpn, paste(kpn_rs_f_sd$rs_vec,'ris', sep = '_'))
+
+kpn_fi_esbl <- referred_first_esbl(df_kpn,df_kpn$esbl)
+
+kpn_at <- rbind(kpn_ra_lipo,kpn_ra_r,kpn_ra_ri,kpn_fi_r,kpn_fi_ri,kpn_fi_sd,kpn_fi_esbl)
+
+```
+
+```{r aba_unusual, echo=FALSE, message=FALSE, warning=FALSE}
+#ABA
+df_aba <- referred_uc[referred_uc$organism == 'aba'& referred_uc$x_referred == 0, ]
+aba_sample <- sample_selector('df_aba','aba')
+df_aba <- df_aba[df_aba$spec_type %in% aba_sample$vec, ]
+
+aba_at_list <- antibiotic_list('aba')
+
+#ABA - regardless of date
+aba_rs_lipo_r <- referral_selector('aba','l','r')
+aba_ra_lipo <- referred_lipo_r(df_aba, aba_rs_lipo_r$rs_vec, paste(aba_rs_lipo_r$rs_vec,'ris', sep = '_'))
+
+aba_rs_a_r <- referral_selector('aba','l','r')
+aba_ra_r <- referred_all_r(df_aba, paste(aba_rs_a_r$rs_vec,'ris', sep = '_'))
+
+aba_rs_a_ri <- referral_selector('aba','a','i_r')
+aba_ra_ri <- referred_all_ri(df_aba, paste(aba_rs_a_ri$rs_vec,'ris', sep = '_')) 
+
+#ABA - days 1 to 3 months
+aba_rs_f_ri <- referral_selector('aba','f','i_r')
+aba_fi_ri <- referred_first_ri(df_aba, paste(aba_rs_f_ri$rs_vec,'ris', sep = '_'))
+
+aba_at <- rbind(aba_ra_lipo,aba_ra_r,aba_ra_ri,aba_fi_ri)
+
+```
+
+```{r pae_unusual, echo=FALSE, message=FALSE, warning=FALSE}
+#PAE
+df_pae <- referred_uc[referred_uc$organism == 'pae'& referred_uc$x_referred == 0, ]
+pae_sample <- sample_selector('df_pae','pae')
+df_pae <- df_pae[df_pae$spec_type %in% pae_sample$vec, ]
+
+pae_at_list <- antibiotic_list('pae')
+
+#PAE - regardless of date
+pae_rs_lipo_r <- referral_selector('pae','l','r')
+pae_ra_lipo <- referred_lipo_r(df_pae, pae_rs_lipo_r$rs_vec, paste(pae_rs_lipo_r$rs_vec,'ris', sep = '_'))
+
+pae_rs_a_r <- referral_selector('pae','a','r')
+pae_ra_r <- referred_all_r(df_pae, paste(pae_rs_a_r$rs_vec,'ris', sep = '_'))
+
+pae_rs_a_ri <- referral_selector('pae','a','i_r')
+pae_ra_ri <- referred_all_ri(df_pae, paste(pae_rs_a_ri$rs_vec,'ris', sep = '_')) 
+
+#PAE - days 1 to 3 months
+pae_rs_f_r <- referral_selector('pae','f','r')
+pae_fi_r <- referred_first_r(df_pae, paste(pae_rs_f_r$rs_vec,'ris', sep = '_'))
+
+pae_rs_f_ri <- referral_selector('pae','f','i_r')
+pae_fi_ri <- referred_first_ri(df_pae, paste(pae_rs_f_ri$rs_vec,'ris', sep = '_'))
+
+pae_at <- rbind(pae_ra_lipo,pae_ra_r,pae_ra_ri,pae_fi_r,pae_fi_ri)
+
+```
+
+```{r pma_unusual, echo=FALSE, message=FALSE, warning=FALSE}
+#PMA
+df_pma <- referred_uc[referred_uc$organism == 'pma'& referred_uc$x_referred == 0, ]
+pma_sample <- sample_selector('df_pma','pma')
+df_pma <- df_pma[df_pma$spec_type %in% pma_sample$vec, ]
+
+pma_at_list <- antibiotic_list('pma')
+
+#PAE - regardless of date
+pma_rs_a_ri <- referral_selector('pma','a','i_r')
+pma_ra_ri <- referred_all_ri(df_pma, paste(pma_rs_a_ri$rs_vec,'ris', sep = '_')) 
+
+pma_rs_a_ns <- referral_selector('pma','a','ns')
+pma_ra_ns <- referred_all_ns(df_pma, paste(pma_rs_a_ns$rs_vec,'ris', sep = '_')) 
+
+pma_at <- rbind(pma_ra_ri,pma_ra_ns)
+```
+
+```{r bs_unusual, echo=FALSE, message=FALSE, warning=FALSE}
+#BS
+df_bs <- referred_uc[referred_uc$organism == 'bs-'& referred_uc$x_referred == 0, ]
+bs_sample <- sample_selector('df_bs','bs-')
+df_bs <- df_bs[df_bs$spec_type %in% bs_sample$vec, ]
+
+bs_at_list <- antibiotic_list('bs-')
+
+#BS - regardless of date
+bs_rs_a_ri <- referral_selector('bs-','a','i_r')
+bs_ra_ri <- referred_all_ri(df_bs, paste(bs_rs_a_ri$rs_vec,'ris', sep = '_')) 
+
+bs_rs_a_ns <- referral_selector('bs-','a','ns')
+bs_ra_ns <- referred_all_ns(df_bs, paste(bs_rs_a_ns$rs_vec,'ris', sep = '_'))
+
+bs_ra_icr <- df_bs[!is.na(df_bs$induc_cli == '+'), ]
+
+bs_at <- rbind(bs_ra_ri,bs_ra_ns,bs_ra_icr)
+```
+
+```{r efa_unusual, echo=FALSE, message=FALSE, warning=FALSE}
+#EFA
+df_efa <- referred_uc[referred_uc$organism == 'efa'& referred_uc$x_referred == 0, ]
+efa_sample <- sample_selector('df_efa','efa')
+df_efa <- df_bs[df_efa$spec_type %in% efa_sample$vec, ]
+
+efa_at_list <- antibiotic_list('efa')
+
+#EFA - regardless of date
+efa_rs_a_r <- referral_selector('efa','a','r')
+efa_ra_r <- referred_all_r(df_efa, paste(efa_rs_a_r$rs_vec,'ris', sep = '_'))
+
+efa_rs_a_ri <- referral_selector('efa','a','i_r')
+efa_ra_ri <- referred_all_ri(df_efa, paste(efa_rs_a_ri$rs_vec,'ris', sep = '_')) 
+
+efa_rs_a_nsr <- referral_selector('efa','a','ns_r')
+efa_ra_nsr <- referred_all_ns_r(df_efa, paste(efa_rs_a_nsr$rs_vec,'ris', sep = '_')) 
+
+
+#EFA - days 1 to 3 days
+efa_rs_f_ns <- referral_selector('efa','f','ns')
+efa_fi_ns <- referred_first_ns(df_efa, paste(efa_rs_f_ns$rs_vec,'ris', sep = '_'))
+
+
+efa_at <- rbind(efa_ra_r,efa_ra_ri,efa_ra_nsr,efa_fi_ns)
+
+```
+
+```{r efm_unusual, echo=FALSE, message=FALSE, warning=FALSE}
+#EFM
+df_efm <- referred_uc[referred_uc$organism == 'efm'& referred_uc$x_referred == 0, ]
+efm_sample <- sample_selector('df_efm','efm')
+df_efm <- df_efm[df_efm$spec_type %in% efm_sample$vec, ]
+
+efm_at_list <- antibiotic_list('efm')
+
+#EFA - regardless of date
+efm_rs_a_r <- referral_selector('efm','a','r')
+efm_ra_r <- referred_all_r(df_efm, paste(efm_rs_a_r$rs_vec,'ris', sep = '_'))
+
+efm_rs_a_ri <- referral_selector('efm','a','i_r')
+efm_ra_ri <- referred_all_ri(df_efm, paste(efm_rs_a_ri$rs_vec,'ris', sep = '_')) 
+
+efm_rs_a_nsr <- referral_selector('efm','a','ns_r')
+efm_ra_nsr <- referred_all_ns_r(df_efm, paste(efm_rs_a_nsr$rs_vec,'ris', sep = '_')) 
+
+
+efm_at <- rbind(efm_ra_r,efm_ra_ri,efm_ra_nsr)
+```
+
+```{r sau_unusual, echo=FALSE, message=FALSE, warning=FALSE}
+#SAU
+df_sau <- referred_uc[referred_uc$organism == 'sau'& referred_uc$x_referred == 0, ]
+sau_sample <- sample_selector('df_sau','sau')
+df_sau <- df_sau[df_sau$spec_type %in% sau_sample$vec, ]
+
+sau_at_list <- antibiotic_list('sau')
+
+#SAU - regardless of date
+sau_rs_a_ri <- referral_selector('sau','a','i_r')
+sau_ra_ri <- referred_all_ri(df_sau, paste(sau_rs_a_ri$rs_vec,'ris', sep = '_')) 
+
+sau_rs_a_ns <- referral_selector('sau','a','ns')
+sau_ra_ns <- referred_all_ns(df_sau, paste(sau_rs_a_ns$rs_vec,'ris', sep = '_'))
+
+sau_rs_f_r <- referral_selector('sau','f','r')
+sau_fi_r <- referred_first_r(df_sau, paste(sau_rs_f_r$rs_vec,'ris', sep = '_'))
+
+sau_ra_icr <- df_sau[!is.na(df_sau$induc_cli == '+'), ]
+
+sau_at <- rbind(sau_ra_ri,sau_ra_ns,sau_fi_r,sau_ra_icr)
+```
+
+```{r sta_unusual, echo=FALSE, message=FALSE, warning=FALSE}
+#STA
+sta_org <- c('sep','shl','slu','sap','ssf')
+df_sta <- referred_uc[referred_uc$organism %in% sta_org & referred_uc$x_referred == 0, ]
+sta_sample <- sample_selector('df_sta','sta')
+df_sta <- df_sta[df_sta$spec_type %in% sta_sample$vec, ]
+
+sta_at_list <- antibiotic_list('sta')
+
+#STA - regardless of date
+sta_rs_a_r <- referral_selector('sta','a','r')
+sta_ra_r <- referred_all_r(df_sta, paste(sta_rs_a_r$rs_vec,'ris', sep = '_'))
+
+sta_rs_a_ri <- referral_selector('sta','a','i_r')
+sta_ra_ri <- referred_all_ri(df_sta, paste(sta_rs_a_ri$rs_vec,'ris', sep = '_')) 
+
+sta_rs_a_ns <- referral_selector('sta','a','ns')
+sta_ra_ns <- referred_all_ns(df_sta, paste(sta_rs_a_ns$rs_vec,'ris', sep = '_'))
+
+sta_ra_icr <- df_sta[!is.na(df_sta$induc_cli == '+'), ]
+
+
+sta_at <- rbind(sta_ra_r,sta_ra_ri,sta_ra_ns,sta_ra_icr)
+```
+
+```{r hin_hpi_unusual, echo=FALSE, message=FALSE, warning=FALSE}
+#HIN_HPI
+hin_hpi_org <- c('hin','hpi')
+df_hin_hpi <- data_summary_clean[data_summary_clean$organism %in% hin_hpi_org & data_summary_clean$x_referred == 0, ]
+hin_hpi_sample <- sample_selector('df_hin_hpi','hin_hpi')
+df_hin_hpi <- df_hin_hpi[df_hin_hpi$spec_type %in% hin_hpi_sample$vec, ]
+
+hin_hpi_at_list <- antibiotic_list('hin_hpi')
+
+hin_hpi_rs_a_b <- referral_selector('hin_hpi','b','r')
+hin_hpi_beta <- df_hin_hpi[!is.na(df_hin_hpi$beta_lact == '-'), ]
+hin_hpi_ra_b <- referred_all_b(hin_hpi_beta, paste(hin_hpi_rs_a_b$rs_vec,'ris', sep = '_'))
+
+hin_hpi_rs_a_nsr <- referral_selector('hin_hpi','a','ns_r')
+hin_hpi_ra_nsr <- referred_all_ns_r(df_hin_hpi, paste(hin_hpi_rs_a_nsr$rs_vec,'ris', sep = '_')) 
+
+hin_hpi_rs_a_ns <- referral_selector('hin_hpi','a','ns')
+hin_hpi_ra_ns <- referred_all_ns(df_hin_hpi, paste(hin_hpi_rs_a_ns$rs_vec,'ris', sep = '_')) 
+
+
+hin_hpi_at <- rbind(hin_hpi_ra_nsr,hin_hpi_ra_ns,hin_hpi_ra_b)
+```
+
+```{r ngo_unusual, echo=FALSE, message=FALSE, warning=FALSE}
+#NGO
+df_ngo <- data_summary_clean[data_summary_clean$organism == 'ngo' & data_summary_clean$x_referred == 0, ]
+ngo_sample <- sample_selector('df_ngo','ngo')
+df_ngo <- df_ngo[df_ngo$spec_type %in% ngo_sample$vec, ]
+
+ngo_at_list <- antibiotic_list('ngo')
+
+ngo_rs_a_ri <- referral_selector('ngo','a','i_r')
+ngo_ra_ri <- referred_all_ri(df_ngo, paste(ngo_rs_a_ri$rs_vec,'ris', sep = '_')) 
+
+ngo_rs_a_ns <- referral_selector('ngo','a','ns')
+ngo_ra_ns <- referred_all_ns(df_ngo, paste(ngo_rs_a_ns$rs_vec,'ris', sep = '_')) 
+
+ngo_at <- rbind(ngo_ra_ri,ngo_ra_ns)
+```
+
+```{r nme_unusual, echo=FALSE, message=FALSE, warning=FALSE}
+#NME
+df_nme <- data_summary_clean[data_summary_clean$organism == 'nme' & data_summary_clean$x_referred == 0, ]
+nme_sample <- sample_selector('df_nme','nme')
+df_nme <- df_nme[df_nme$spec_type %in% nme_sample$vec, ]
+
+nme_at_list <- antibiotic_list('nme')
+
+nme_rs_a_ri <- referral_selector('nme','a','i_r')
+nme_ra_ri <- referred_all_ri(df_nme, paste(nme_rs_a_ri$rs_vec,'ris', sep = '_')) 
+
+nme_rs_a_ns <- referral_selector('nme','a','ns')
+nme_ra_ns <- referred_all_ns(df_nme, paste(nme_rs_a_ns$rs_vec,'ris', sep = '_')) 
+
+nme_at <- rbind(nme_ra_ri,nme_ra_ns)
+```
+
+```{r spn_unusual, echo=FALSE, message=FALSE, warning=FALSE}
+#SPN
+df_spn <- data_summary_clean[data_summary_clean$organism == 'spn' & data_summary_clean$x_referred == 0, ]
+spn_sample <- sample_selector('df_spn','spn')
+df_spn <- df_spn[df_spn$spec_type %in% spn_sample$vec, ]
+
+spn_at_list <- antibiotic_list('spn')
+
+spn_rs_a_r <- referral_selector('spn','a','r')
+spn_ra_r <- referred_all_r(df_spn, paste(spn_rs_a_r$rs_vec,'ris', sep = '_'))
+
+spn_rs_a_sd <- referral_selector('spn','a','i_r_s')
+spn_ra_sd <- referred_all_sd(df_spn, paste(spn_rs_a_sd$rs_vec,'ris', sep = '_')) 
+
+spn_rs_a_ns <- referral_selector('spn','a','i_r_s')
+spn_ra_ns <- referred_all_ns(df_spn, paste(spn_rs_a_ns$rs_vec,'ris', sep = '_')) 
+
+spn_rs_a_ns_ir <- referral_selector('spn','a','i_r_n')
+spn_ra_ns_ir <- referred_all_ns_ir(df_spn, paste(spn_rs_a_ns_ir$rs_vec,'ris', sep = '_')) 
+
+spn_ra_icr <- df_spn[!is.na(df_spn$induc_cli == '+'), ]
+
+spn_at <- rbind(spn_ra_r,spn_ra_sd,spn_ra_ns,spn_ra_ns_ir,spn_ra_icr)
+```
+
+```{r sal_unusual, echo=FALSE, message=FALSE, warning=FALSE}
+#SAL
+df_sal <- referred_uc[referred_uc$organism == 'sal'  & referred_uc$x_referred == 0, ]
+sal_sample <- sample_selector('df_sal','sal')
+df_sal <- df_sal[df_sal$spec_type %in% sal_sample$vec, ]
+
+sal_at_list <- antibiotic_list('sal_shi')
+
+sal_rs_a_r <- referral_selector('sal_shi','a','r')
+sal_ra_r <- referred_all_r(df_sal, paste(sal_rs_a_r$rs_vec,'ris', sep = '_'))
+
+sal_rs_a_ri <- referral_selector('sal_shi','a','i_r')
+sal_ra_ri <- referred_all_ri(df_sal, paste(sal_rs_a_ri$rs_vec,'ris', sep = '_')) 
+
+sal_ra_esbl <- referred_all_esbl(df_sal,df_sal$esbl)
+
+sal_at <- rbind(sal_ra_r,sal_ra_ri,sal_ra_esbl)
+```
+
+```{r shi_unusual, echo=FALSE, message=FALSE, warning=FALSE}
+#SHI
+df_shi <- referred_uc[referred_uc$organism == 'shi'  & referred_uc$x_referred == 0, ]
+shi_sample <- sample_selector('df_shi','shi')
+df_shi <- df_shi[df_shi$spec_type %in% shi_sample$vec, ]
+
+shi_at_list <- antibiotic_list('sal_shi')
+
+shi_rs_a_r <- referral_selector('sal_shi','a','r')
+shi_ra_r <- referred_all_r(df_shi, paste(shi_rs_a_r$rs_vec,'ris', sep = '_'))
+
+shi_rs_a_ri <- referral_selector('sal_shi','a','i_r')
+shi_ra_ri <- referred_all_ri(df_shi, paste(shi_rs_a_ri$rs_vec,'ris', sep = '_')) 
+
+shi_ra_esbl <- referred_all_esbl(df_shi,df_shi$esbl)
+
+shi_at <- rbind(shi_ra_r,shi_ra_ri,shi_ra_esbl)
+```
+
+```{r vic_unusual, echo=FALSE, message=FALSE, warning=FALSE}
+df_vic <- data_summary_clean[data_summary_clean$organism == 'vic'  & data_summary_clean$x_referred == 0, ]
+vic_sample <- sample_selector('df_vic','vic')
+df_vic <- df_vic[df_vic$spec_type %in% vic_sample$vec, ]
+
+keeps <- c('patient_id','sex','age','date_admis','spec_num','spec_date','spec_type','organism')
+vic_referred <- subset(df_vic, select = c(keeps))
+
+count_df <- nrow(vic_referred)
+org_name <- 'Vibrio cholerae'
+vic_tc <- data.frame(org_name,count_df)
+
+```
+
+```{r e157_unusual, echo=FALSE, message=FALSE, warning=FALSE}
+df_e157 <- data_summary_clean[data_summary_clean$organism == '157' & data_summary_clean$x_referred == 0, ]
+e157_sample <- sample_selector('df_e157','157')
+df_e157 <- df_e157[df_vic$spec_type %in% e157_sample$vec, ]
+df_e157 <-df_e157[!is.na(df_e157$organism),]
+
+keeps <- c('patient_id','sex','age','date_admis','spec_num','spec_date','spec_type','organism')
+e157_referred <- subset(df_e157, select = c(keeps))
+
+count_df <- nrow(e157_referred)
+org_name <- 'Escherichia coli 0:157:H7'
+e157_tc <- data.frame(org_name,count_df)
+
+
+```
+
+```{r unsual_df_format, echo=FALSE, message=FALSE, warning=FALSE}
+unusual_df <- function(df, at_list,org_name){
+  referral_data <- df[!duplicated(df[c('id','patient_id','first_name','mid_name','last_name')]),]
+  keeps <- c('patient_id','sex','age','date_admis','spec_num','spec_date','spec_type','organism')
+  
+  ris_df <- subset(referral_data, select = c('patient_id',at_list))
+  ris_df <- ris_df[,colSums(is.na(ris_df))<nrow(ris_df)]
+  names(ris_df) = gsub(pattern = "_n.*", replacement = "_RIS", x = names(ris_df))
+  demogs_df <- subset(referral_data, select = c(keeps))
+
+
+  if(nrow(demogs_df) != 0){
+    referral_df <- merge(x=demogs_df,y=ris_df, by="patient_id", all.x=TRUE)
+    referral_df[['date_admis']] <- as.character(as.Date(referral_df[['date_admis']], format = "%Y-%m-%d"))
+    referral_df[['spec_date']] <- as.character(as.Date(referral_df[['spec_date']], format = "%Y-%m-%d"))
+    referral_df[is.na(referral_df)] <- ""
+    
+    count_df <- nrow(referral_df)
+    org_name <- org_name
+    referral_tc <- data.frame(org_name,count_df)
+    
+    return(list(data.frame(ris_df), data.frame(demogs_df), data.frame(referral_df), data.frame(referral_tc)))
+    }
+    
+}
+
+eco_referred <- unusual_df(eco_at, eco_at_list$rs_vec, 'Escherichia coli')
+kpn_referred <- unusual_df(kpn_at, kpn_at_list$rs_vec,'Klebsiella pneumoniae')
+aba_referred <- unusual_df(aba_at, aba_at_list$rs_vec, 'Acinetobacter baumanni')
+pae_referred <- unusual_df(pae_at, pae_at_list$rs_vec,'Pseudomonas aeruginosa')
+pma_referred <- unusual_df(pma_at, pma_at_list$rs_vec, 'Stenotrophomonas maltophilia')
+bs_referred <- unusual_df(bs_at, bs_at_list$rs_vec,'Beta-Hemolytic Streptococci')
+efa_referred <- unusual_df(efa_at, efa_at_list$rs_vec,'Enterococcus faecalis')
+efm_referred <- unusual_df(efm_at, efm_at_list$rs_vec,'Enterococcus faecium')
+sau_referred <- unusual_df(sau_at, sau_at_list$rs_vec,'Staphylococcus aureus')
+sta_referred <- unusual_df(sta_at, sta_at_list$rs_vec,'Staphylocococcus spp. other than S.aureus')
+hin_hpi_referred <- unusual_df(hin_hpi_at, hin_hpi_at_list$rs_vec,'Haemophilus influenzae and Haemophilus parainfluenzae')
+ngo_referred <- unusual_df(ngo_at, ngo_at_list$rs_vec,'Neisseria gonorrhoeae')
+nme_referred <- unusual_df(nme_at, nme_at_list$rs_vec,'Neisseria meningitidis')
+spn_referred <- unusual_df(spn_at, spn_at_list$rs_vec,'Streptococcus pneumoniae')
+sal_referred <- unusual_df(sal_at, sal_at_list$rs_vec,'Salmonella species')
+shi_referred <- unusual_df(shi_at, shi_at_list$rs_vec,'Shigella species')
+
+unusual_list <- rbind(eco_referred[[4]],kpn_referred[[4]],aba_referred[[4]],pae_referred[[4]],pma_referred[[4]],bs_referred[[4]],efa_referred[[4]],efm_referred[[4]],sau_referred[[4]],sta_referred[[4]],hin_hpi_referred[[4]],ngo_referred[[4]],nme_referred[[4]],spn_referred[[4]],sal_referred[[4]],shi_referred[[4]],vic_tc,e157_tc)
+
+unusual_list[unusual_list==0] <- NA
+unusual_list <- unusual_list[complete.cases(unusual_list),]
+
+```
+
+
+```{r Quality Control, echo=FALSE, message=FALSE, warning=FALSE}
+quality_control <- function(df,patient_id,organism,org_name){
+  df <- df[df$patient_id == patient_id & df$organism == organism, ]
+  org_name <- org_name
+  tl <- nrow(df)
+  
+  qc_df <- data.frame(organism,org_name,patient_id,tl)
+  qc_summary <- data.frame(org_name,tl)
+  return(list(data.frame(df),data.frame(qc_df), data.frame(qc_summary)))
+
+}
+
+qc_25922 <- quality_control(data_summary,'atcc25922', 'eco','Escherichia coli')
+qc_49247 <- quality_control(data_summary,'atcc49247', 'hin','Haemophilus influenzae')
+qc_27853 <- quality_control(data_summary,'atcc27853', 'pae','Pseudomonas aeruginosa')
+qc_25923 <- quality_control(data_summary,'atcc25923', 'sau','Staphylococcus aureus')
+qc_29213 <- quality_control(data_summary,'atcc29213', 'sau','Staphylococcus aureus')
+qc_49619 <- quality_control(data_summary,'atcc49619', 'spn','Streptococcus pneumoniae')
+
+qc_df <- rbind(qc_25922[[2]],qc_49247[[2]],qc_27853[[2]],qc_25923[[2]],qc_29213[[2]],qc_49619[[2]])
+qc_summary <- rbind(qc_25922[[3]],qc_49247[[3]],qc_27853[[3]],qc_25923[[3]],qc_29213[[3]],qc_49619[[3]])
+```
+
+\fontsize{8}{9}
+\selectfont
+\captionsetup[table]{labelformat=empty}
+\renewcommand{\arraystretch}{1.2}
+
+||
+|:------------------|:----------------------------------|:------------|:------------|
+|   **Hospital/Site**   |  `r site_name` |   **Code**   |    `r f_site`   |
+|  **Year** |  `r f_year` | **Month** | `r file_month` |
+|  **File Submitted**   |  `r file_name` | **Date Received** |  Date Received |
+| **Number of isolates** | `r row_sum` |  | |
+
+
+**REPORT SUMMARY**
+
+```{r data_quality_table, echo=FALSE, message=FALSE, warnings=FALSE}
+DQ_column <- c("1. Completeness of Minimum Required data", "2. Invalid Codes", "3. Invalid Specimen type", "4. Invalid Specimen date", "5. Invalid Date of admission") 
+Percent <- c(pct_complete,pct_inv_organism,pc_invt_spec,pct_inv_spec_date,pct_inv_admis_date)
+Percent <- paste(Percent,"%")
+Remarks <- c("")
+
+dataquality_df <- data.frame(DQ_column,Percent,Remarks)
+
+# assigning new names to the columns of the data frame 
+colnames(dataquality_df) <- c('Part I. Data quality','Percent','Remarks') 
+
+kable(dataquality_df,align = "lcc") %>%
+  column_spec(1, width = "9cm", background = "#D4D4D4",border_left = TRUE) %>%
+  column_spec(2, width = "2cm") %>%
+  column_spec(3, width = "4cm",border_right = TRUE)%>%
+  row_spec(0, background = "#D4D4D4",bold = TRUE)
+```
+
+$\\$
+
+```{r at_monitoring, echo=FALSE, message=FALSE, warnings=FALSE}
+# assigning new names to the columns of the data frame 
+colnames(at_monitoring_df) <- c('Part II-A. Antibiotic Testing Monitoring','Number of isolates','Average') 
+
+kable(at_monitoring_df,align = "lcc") %>%
+  column_spec(1, width = "9cm", background = "#D4D4D4",border_left = TRUE, italic = TRUE) %>%
+  column_spec(2, width = "3cm") %>%
+  column_spec(3, width = "3cm",border_right = TRUE)%>%
+  row_spec(0, background = "#D4D4D4",bold = TRUE)
+```
+
+$\\$
+
+```{r phenotypic_table, echo=FALSE, message=FALSE, warnings=FALSE}
+phenotypic_column <- c("1. ESBL for K.pneumoniae and E.coli","2. MRSA")
+percent <- c(esbl_total,mrsa_total)
+percent <- paste(percent,"%")
+remarks <- c("")
+
+phenotypic_df <- data.frame(phenotypic_column,percent,remarks)
+
+# assigning new names to the columns of the data frame 
+colnames(phenotypic_df) <- c('Part II-B. OTher Phenotypic Test','Percent','Remarks') 
+
+kable(phenotypic_df,align = "lcc") %>%
+  column_spec(1, width = "9cm", background = "#D4D4D4",border_left = TRUE, italic = TRUE) %>%
+  column_spec(2, width = "2cm") %>%
+  column_spec(3, width = "4cm",border_right = TRUE)%>%
+  row_spec(0, background = "#D4D4D4",bold = TRUE)
+```
+$\\$
+
+```{r unusual_table, echo=FALSE, message=FALSE, warnings=FALSE}
+# assigning new names to the columns of the data frame 
+if(nrow(unusual_list) != 0){
+  colnames(unusual_list) <- c('Part III. List of unusual/referable isolates that were not sent for ARSRL confirmation','Number')
+  kable(unusual_list,align = "lcc")%>%
+  column_spec(1, width = "9cm",border_left = TRUE, italic = TRUE) %>%
+  column_spec(2, width = "3cm",border_right = TRUE)%>%
+  row_spec(0, background = "#D4D4D4",bold = TRUE)
+  
+
+}else{
+  org_name <- "None"
+  unusual_num <- ""
+  unusual_remarks <- ""
+  unusual_list <- data.frame(org_name,unusual_num,unusual_remarks)
+  
+  colnames(unusual_list) <- c('List of unusual/referable isolates that were not sent for ARSRL confirmation','Number')
+  kable(unusual_list,align = "lc") %>%
+  column_spec(1, width = "9cm",border_left = TRUE, italic = TRUE) %>%
+  column_spec(2, width = "3cm",border_right = TRUE)%>%
+  row_spec(0, background = "#D4D4D4",bold = TRUE)
+}
+
+```
+
+```{r remarks_table, echo=FALSE, message=FALSE, warnings=FALSE}
+if(nrow(unusual_list) != 0){
+  unusual_remarks <- data.frame(Remarks=  "Verify whether isolates are submitted. Encode '1' in the data field 'referred' to mark the submitted isolates. Otherwise, submit the isolates for confirmatory testing in reference wih the ARSP Guidlines of referable isolates")
+
+  kable(unusual_remarks,align = "l")%>%
+  column_spec(1, width = "12.5cm",border_left = TRUE,border_right = TRUE) %>%
+  row_spec(0, background = "#D4D4D4",bold = TRUE)
+
+}
+
+```
+$\\$
+
+```{r qc_summary_table, echo=FALSE, message=FALSE, warnings=FALSE}
+# assigning new names to the columns of the data frame 
+if(nrow(qc_summary) != 0){
+  colnames(qc_summary) <- c('Part IV. Submission of Quality Control isolates','Number')
+  kable(qc_summary,align = "lcc")%>%
+  column_spec(1, width = "9cm",border_left = TRUE, italic = TRUE) %>%
+  column_spec(2, width = "3cm",border_right = TRUE)%>%
+  row_spec(0, background = "#D4D4D4",bold = TRUE)
+  
+
+}else{
+  qc_spec <- "None"
+  qc_num <- ""
+  qc_summary <- data.frame(qc_spec,qc_num)
+  
+  colnames(qc_summary) <- c('Part IV. Submission of Quality Control isolates','Number')
+  kable(qc_summary,align = "lcc")%>%
+  column_spec(1, width = "9cm",border_left = TRUE, italic = TRUE) %>%
+  column_spec(2, width = "3cm",border_right = TRUE)%>%
+  row_spec(0, background = "#D4D4D4",bold = TRUE)
+}
+
+```
+$\\$
+
+```{r completeness_table , echo=FALSE, message=FALSE, warnings=FALSE}
+ct_column <- c("1. Identification number","2. Name (Last name)","3. Sex","4. Age","5. Date of birth","6. Location/Ward","7. Department","8. Ward type","9. Specimen number", "10. Specimen date","11. Specimen type","12. Organism","13. Date of admission (Total inpatient)","14. Diagnosis")
+
+ad_tl_in <- paste(tl_inpatient, "(",tl_admis_date,")")
+
+tl_num <- c(pt_id$tl,lname$tl,sex$tl,age$tl,date_birth$tl,ward$tl,dept$tl,ward_type$tl,spec_num$tl,tl_spec_date,tl_spec_type,tl_organism,ad_tl_in,diagnosis$tl)
+
+percentage <- c(pt_id$pct,lname$pct,sex$pct,age$pct,date_birth$pct,ward$pct,dept$pct,ward_type$pct,spec_num$pct,pct_spec_date,pct_spec_type,pct_organism,pct_admis_date,diagnosis$pct)
+percentage <- paste(percentage,"%")
+
+
+completeness_df <- data.frame(ct_column,tl_num,percentage)
+
+# assigning new names to the columns of the data frame 
+colnames(completeness_df) <- c('Part I. Data quality','Number','Percentage') 
+
+kable(completeness_df,align = "lcc") %>%
+  column_spec(1, width = "5.5cm", background = "#D4D4D4",border_left = TRUE) %>%
+  column_spec(2, width = "3cm") %>%
+  column_spec(3, width = "3cm",border_right = TRUE)%>%
+  row_spec(0, background = "#D4D4D4",bold = TRUE)
+
+```
+$\\$
+
+```{r inv_codes_table, echo=FALSE, message=FALSE, warnings=FALSE}
+# assigning new names to the columns of the data frame 
+if(nrow(inv_organism_df) != 0){
+  tl_cols <- nrow(inv_organism_df)
+  new_row = list(inv_organism = "Total", n = tl_inv_organism)
+  inv_organism_df = rbind(inv_organism_df,new_row)
+  
+  colnames(inv_organism_df) <- c('List of invalid codes','Number')
+  kable(inv_organism_df,align = "lcc") %>%
+  column_spec(1, width = "9cm",border_left = TRUE) %>%
+  column_spec(2, width = "3cm",border_right = TRUE)%>%
+  row_spec(0, background = "#D4D4D4",bold = TRUE) %>%
+  row_spec(tl_cols + 1,bold = TRUE,background = "yellow")
+}else{
+  inv_codes <- "None"
+  inv_num <- ""
+  inv_organism_df <- data.frame(inv_codes,inv_num)
+  
+  colnames(inv_organism_df) <- c('List of invalid codes','Number')
+  kable(inv_organism_df,align = "lcc") %>%
+  column_spec(1, width = "9cm", border_left = TRUE) %>%
+  column_spec(2, width = "3cm",border_right = TRUE)%>%
+  row_spec(0, background = "#D4D4D4",bold = TRUE)
+}
+
+
+```
+$\\$
+
+```{r inv_spec_date_table, echo=FALSE, message=FALSE, warnings=FALSE}
+# assigning new names to the columns of the data frame 
+if(nrow(inv_spec_date_df) != 0){
+  tl_cols <- nrow(inv_spec_date_df)
+  new_row = list(inv_spec_date = "Total", n = tl_inv_spec_date)
+  inv_spec_date_mod = rbind(inv_spec_date_df,new_row)
+  
+  colnames(inv_spec_date_mod) <- c('List of invalid Specimen Date','Number')
+  kable(inv_spec_date_mod,align = "lc") %>%
+  column_spec(1, width = "9cm",border_left = TRUE) %>%
+  column_spec(2, width = "3cm",border_right = TRUE)%>%
+  row_spec(0, background = "#D4D4D4",bold = TRUE)%>%
+  row_spec(tl_cols + 1,bold = TRUE,background = "yellow")
+}else{
+  inv_spec_d <- "None"
+  inv_num <- ""
+  inv_spec_date_df <- data.frame(inv_spec_d,inv_num)
+  
+  colnames(inv_spec_date_df) <- c('List of invalid Specimen Date','Number')
+  kable(inv_spec_date_df,align = "lc") %>%
+  column_spec(1, width = "9cm", border_left = TRUE) %>%
+  column_spec(2, width = "3cm",border_right = TRUE)%>%
+  row_spec(0, background = "#D4D4D4",bold = TRUE)
+}
+
+```
+$\\$
+
+```{r inv_admis_date_table, echo=FALSE, message=FALSE, warnings=FALSE}
+if(nrow(inv_admis_date_df) != 0){
+  tl_cols <- nrow(inv_admis_date_df)
+  new_row = list(inv_admis_date = "Total", n = tl_inv_admis_date)
+  inv_admis_date_mod = rbind(inv_admis_date_df,new_row)
+
+  colnames( inv_admis_date_mod) <- c('List of invalid Date of Admission','Number')
+  kable(inv_admis_date_mod,align = "lc") %>%
+  column_spec(1, width = "9cm",border_left = TRUE) %>%
+  column_spec(2, width = "3cm",border_right = TRUE)%>%
+  row_spec(0, background = "#D4D4D4",bold = TRUE)%>%
+  row_spec(tl_cols + 1,bold = TRUE,background = "yellow")
+
+}else{
+  inv_spec_d <- "None"
+  inv_num <- ""
+  inv_admis_date_df <- data.frame(inv_admis_date_df)
+  
+  colnames(inv_admis_date_df) <- c('List of invalid Date of Admission','Number')
+  kable(inv_admis_date_df,align = "lc") %>%
+  column_spec(1, width = "9cm", border_left = TRUE) %>%
+  column_spec(2, width = "3cm",border_right = TRUE)%>%
+  row_spec(0, background = "#D4D4D4",bold = TRUE)
+}
+
+```
+$\\$
+
+```{r inv_spec_table, echo=FALSE, message=FALSE, warnings=FALSE}
+# assigning new names to the columns of the data frame 
+
+
+if(nrow(inv_spec_df) != 0){
+  tl_cols <- nrow(inv_spec_df)
+  new_row = list(inv_spec = "Total", n = tl_inv_spec)
+  inv_spec_df = rbind(inv_spec_df,new_row)
+  
+  colnames(inv_spec_df) <- c('List of invalid Specimen type','Number') 
+  kable(inv_spec_df,align = "lc") %>%
+  column_spec(1, width = "9cm",border_left = TRUE) %>%
+  column_spec(2, width = "3cm",border_right = TRUE)%>%
+  row_spec(0, background = "#D4D4D4",bold = TRUE) %>%
+  row_spec(tl_cols + 1,bold = TRUE,background = "yellow")
+}else{
+  inv_spec <- "None"
+  inv_num <- ""
+  inv_spec_df <- data.frame(inv_spec,inv_num)
+  
+  colnames(inv_spec_df) <- c('List of invalid Specimen type','Number')
+  kable(inv_spec_df,align = "lc") %>%
+  column_spec(1, width = "9cm", border_left = TRUE) %>%
+  column_spec(2, width = "3cm",border_right = TRUE)%>%
+  row_spec(0, background = "#D4D4D4",bold = TRUE)
+}
+
+```
+$\\ \\$
+
+
+
+
+**Part II-A. Antibiotic Testing Monitoring**
+
+```{r at_entero_monitoring, echo=FALSE, message=FALSE, warnings=FALSE}
+if((ebc_amk$tl) != 0){
+  at_column <- c("1. Amikacin ","2. Amoxicillin-Clavulanate","3. Ampicillin","4. Aztreonam","5. Cefazolin","6. Cefepime","7. Cefotaxime","8. Cefoxitin","9. Ceftazidime","10. Ceftriaxone","11. Cefuroxime","12. Ciprofloxacin","13. Ertapenem","14. Gentamicin","15. Imipenem","16. Meropenem","17. Piperacillin-tazobactam","18. Tetracycline","19. Tobramycin","20. Trimethoprim-sulfamethoxazole","21. Colistin")
+
+  at_total <- c(ebc_amk$at_sum,ebc_amc$at_sum,ebc_amp$at_sum,ebc_atm$at_sum,ebc_czo$at_sum,ebc_fep$at_sum,ebc_ctx$at_sum,ebc_fox$at_sum,ebc_caz$at_sum,ebc_cro$at_sum,ebc_cxm$at_sum,ebc_cip$at_sum,ebc_etp$at_sum,ebc_gen$at_sum,ebc_ipm$at_sum,ebc_mem$at_sum,ebc_tzp$at_sum,ebc_tcy$at_sum,ebc_tob$at_sum,ebc_sxt$at_sum,ebc_col$at_sum)
+  
+  at_pct <- c(ebc_amk$at_pc,ebc_amc$at_pc,ebc_amp$at_pc,ebc_atm$at_pc,ebc_czo$at_pc,ebc_fep$at_pc,ebc_ctx$at_pc,ebc_fox$at_pc,ebc_caz$at_pc,ebc_cro$at_pc,ebc_cxm$at_pc,ebc_cip$at_pc,ebc_etp$at_pc,ebc_gen$at_pc,ebc_ipm$at_pc,ebc_mem$at_pc,ebc_tzp$at_pc,ebc_tcy$at_pc,ebc_tob$at_pc,ebc_sxt$at_pc,ebc_col$at_pc)
+at_pct <- paste(at_pct,"%")
+
+at_entero_df <- data.frame(at_column,at_total,at_pct)
+
+tl_cols <- nrow(at_entero_df)
+new_row1 = list(at_column = "Additional for Urine", at_total = " ",at_pct = ebc_czo_ur$tl_ur)
+new_row2 = list(at_column = "1. Cefazolin", at_total = ebc_czo_ur$at_sum_ur,at_pct = paste(ebc_czo_ur$at_pc_ur,"%"))
+new_row3 = list(at_column = "2. Nitrofurantoin", at_total = ebc_nit_ur$at_sum_ur,at_pct = paste(ebc_nit_ur$at_pc_ur,"%"))
+at_entero_df = rbind(at_entero_df,new_row1,new_row2,new_row3)
+
+# assigning new names to the columns of the data frame 
+colnames(at_entero_df) <- c('Antibiotic','Number Tested','Percentage') 
+
+kable(at_entero_df,align = "lcc") %>%
+  column_spec(1, width = "6cm",border_left = TRUE) %>%
+  column_spec(2, width = "3cm") %>%
+  column_spec(3, width = "3cm",border_right = TRUE)%>%
+  add_header_above(c("ENTEROBACTERIACEAE except \n Salmonella & Shigella species", "Number",ebc_amk$tl),italic = TRUE,bold = TRUE) %>%
+  row_spec(0,bold = TRUE,align = "c")%>%
+  row_spec(22,bold = TRUE,align = "c")
+}
+
+```
+
+$\\$
+
+```{r at_salshi_monitoring, echo=FALSE, message=FALSE, warnings=FALSE}
+if((sal_shi_amc$tl) != 0){
+  at_column <- c("1. Amoxicillin-Clavulanate","2. Ampicillin","3. Aztreonam","4. Cefepime","5. Cefotaxime","6. Cefoxitin","7. Ceftriaxone","8. Chloramphenicol","9. Ciprofloxacin","10. Ertapenem","11. Imipenem","12. Trimethoprim-sulfamethoxazole")
+
+at_total <- c(sal_shi_amc$at_sum,sal_shi_amp$at_sum,sal_shi_atm$at_sum,sal_shi_fep$at_sum,sal_shi_ctx$at_sum,sal_shi_fox$at_sum,sal_shi_cro$at_sum,sal_shi_chl$at_sum,sal_shi_cip$at_sum,sal_shi_etp$at_sum,sal_shi_ipm$at_sum,sal_shi_sxt$at_sum)
+
+at_pct <- c(sal_shi_amc$at_pc,sal_shi_amp$at_pc,sal_shi_atm$at_pc,sal_shi_fep$at_pc,sal_shi_ctx$at_pc,sal_shi_fox$at_pc,sal_shi_cro$at_pc,sal_shi_chl$at_pc,sal_shi_cip$at_pc,sal_shi_etp$at_pc,sal_shi_ipm$at_pc,sal_shi_sxt$at_pc)
+at_pct <- paste(at_pct,"%")
+
+at_salshi_df <- data.frame(at_column,at_total,at_pct)
+
+tl_cols <- nrow(at_salshi_df)
+new_row1 = list(at_column = "Additional for Antibiotics", at_total = " ",at_pct = "")
+new_row2 = list(at_column = "1. Azithromycin", at_total = sal_shi_azm_add$at_sum,at_pct = paste(sal_shi_azm_add$at_pc,"%"))
+at_salshi_df = rbind(at_salshi_df,new_row1,new_row2)
+
+# assigning new names to the columns of the data frame 
+colnames(at_salshi_df) <- c('Antibiotic','Number Tested','Percentage') 
+
+
+
+kable(at_salshi_df,align = "lcc") %>%
+  column_spec(1, width = "6cm",border_left = TRUE) %>%
+  column_spec(2, width = "3cm") %>%
+  column_spec(3, width = "3cm",border_right = TRUE)%>%
+  add_header_above(c("Salmonella & Shigella sp.", "Number",sal_shi_amc$tl),italic = TRUE,bold = TRUE) %>%
+  row_spec(0,bold = TRUE,align = "c")%>%
+  row_spec(13,bold = TRUE,align = "c")
+
+  
+  
+}
+
+
+```
+
+$\\$
+
+```{r at_ac_monitoring, echo=FALSE, message=FALSE, warnings=FALSE}
+if((ac_amk$tl) != 0){
+  at_column <- c("1. Amikacin"," 2. Amipicillin-Sulbactam", "3. Cefepime", "4. Ceftazidime", "5. Cefotaxime", "6. Ceftriaxone", "7. Ciprofloxacin", "8. Colistin", "9. Imipenem", "10. Meropenem", "11. Minocycline", "12. Gentamicin", "13. Piperacillin-tazobactam", "14. Tobramycin", "15. Trimethoprim-Sulfamethoxazole")
+
+at_total <- c(ac_amk$at_sum, ac_sam$at_sum, ac_fep$at_sum, ac_caz$at_sum, ac_ctx$at_sum, ac_cro$at_sum, ac_cip$at_sum, ac_col$at_sum, ac_ipm$at_sum, ac_mem$at_sum, ac_mno$at_sum, ac_gen$at_sum, ac_tzp$at_sum, ac_tob$at_sum, ac_sxt$at_sum)
+
+at_pct <- c(ac_amk$at_pc,ac_sam$at_pc,ac_fep$at_pc,ac_caz$at_pc,ac_ctx$at_pc,ac_cro$at_pc,ac_cip$at_pc,ac_col$at_pc,ac_ipm$at_pc,ac_mem$at_pc,ac_mno$at_pc,ac_gen$at_pc,ac_tzp$at_pc,ac_tob$at_pc,ac_sxt$at_pc)
+at_pct <- paste(at_pct,"%")
+
+at_ac_df <- data.frame(at_column,at_total,at_pct)
+
+tl_cols <- nrow(at_ac_df)
+new_row1 = list(at_column = "Additional for Urine", at_total = " ",at_pct = ac_tcy_ur$tl_ur)
+new_row2 = list(at_column = "1. Tetracycline", at_total = ac_tcy_ur$at_sum_ur,at_pct = paste(ac_tcy_ur$at_pc_ur,"%"))
+at_ac_df = rbind(at_ac_df,new_row1,new_row2)
+
+# assigning new names to the columns of the data frame 
+colnames(at_ac_df) <- c('Antibiotic','Number Tested','Percentage') 
+
+
+
+kable(at_ac_df,align = "lcc") %>%
+  column_spec(1, width = "6cm",border_left = TRUE) %>%
+  column_spec(2, width = "3cm") %>%
+  column_spec(3, width = "3cm",border_right = TRUE)%>%
+  add_header_above(c("Acinetobacter sp.", "Number",ac_amk$tl),italic = TRUE,bold = TRUE) %>%
+  row_spec(0,bold = TRUE,align = "c")%>%
+  row_spec(16,bold = TRUE,align = "c")
+  
+}
+
+```
+
+$\\$
+
+```{r at_pae_monitoring, echo=FALSE, message=FALSE, warnings=FALSE}
+if((pae_amk$tl) != 0){
+  at_column <- c("1. Amikacin", "2. Aztreonam", "3. Cefepime", "4. Ceftazidime", "5. Ciprofloxacin", "6. Colistin", "7. Imipenem", "8. Levofloxacin", "9. Meropenem", "10. Gentamicin", "11. Piperacillin-tazobactam","12. Tobramycin")
+
+at_total <- c(pae_amk$at_sum,pae_atm$at_sum,pae_fep$at_sum,pae_caz$at_sum,pae_cip$at_sum,pae_col$at_sum,pae_ipm$at_sum,pae_lvx$at_sum,pae_mem$at_sum,pae_gen$at_sum,pae_tzp$at_sum,pae_tob$at_sum)
+
+at_pct <- c(pae_amk$at_pc,pae_atm$at_pc,pae_fep$at_pc,pae_caz$at_pc,pae_cip$at_pc,pae_col$at_pc,pae_ipm$at_pc,pae_lvx$at_pc,pae_mem$at_pc,pae_gen$at_pc,pae_tzp$at_pc,pae_tob$at_pc)
+at_pct <- paste(at_pct,"%")
+
+at_pae_df <- data.frame(at_column,at_total,at_pct)
+
+# assigning new names to the columns of the data frame 
+colnames(at_pae_df) <- c('Antibiotic','Number Tested','Percentage') 
+
+
+kable(at_pae_df,align = "lcc") %>%
+  column_spec(1, width = "6cm",border_left = TRUE) %>%
+  column_spec(2, width = "3cm") %>%
+  column_spec(3, width = "3cm",border_right = TRUE)%>%
+  add_header_above(c("Pseudomonas aeruginosa", "Number",pae_amk$tl),italic = TRUE,bold = TRUE) %>%
+  row_spec(0,bold = TRUE,align = "c")
+}
+
+```
+
+$\\$
+
+```{r at_hiphin_monitoring, echo=FALSE, message=FALSE, warnings=FALSE}
+if((hpi_hin_amc$tl) != 0){
+  at_column <- c("1. Amoxicillin-clavulanate", "2. Ampicillin"," 3. Ampicillin/Sulbactam", "4. Azithromycin", "5. Ceftriaxone", "6. Ciprofloxacin or Levofloxacin", "7. Meropenem", "8. Tetracycline","9. Trimethoprim-Sulfamethoxazole")
+
+at_total <- c(hpi_hin_amc$at_sum,hpi_hin_amp$at_sum,hpi_hin_sam$at_sum,hpi_hin_azm$at_sum,hpi_hin_cro$at_sum,hpi_hin_cip_lvx_sum,hpi_hin_mem$at_sum,hpi_hin_tcy$at_sum,hpi_hin_sxt$at_sum)
+
+at_pct <- c(hpi_hin_amc$at_pc,hpi_hin_amp$at_pc,hpi_hin_sam$at_pc,hpi_hin_azm$at_pc,hpi_hin_cro$at_pc,hpi_hin_cip_lvx_cp,hpi_hin_mem$at_pc,hpi_hin_tcy$at_pc,hpi_hin_sxt$at_pc)
+at_pct <- paste(at_pct,"%")
+
+at_hiphin_df <- data.frame(at_column,at_total,at_pct)
+
+# assigning new names to the columns of the data frame 
+colnames(at_hiphin_df) <- c('Antibiotic','Number Tested','Percentage') 
+
+
+kable(at_hiphin_df,align = "lcc") %>%
+  column_spec(1, width = "6cm",border_left = TRUE) %>%
+  column_spec(2, width = "3cm") %>%
+  column_spec(3, width = "3cm",border_right = TRUE)%>%
+  add_header_above(c("Haemophilus influenzae and \n Haemophilus parainfluenzae", "Number",hpi_hin_amc$tl),italic = TRUE,bold = TRUE) %>%
+  row_spec(0,bold = TRUE,align = "c")
+
+}
+
+```
+
+$\\$
+```{r at_ngo_monitoring, echo=FALSE, message=FALSE, warnings=FALSE}
+if((ngo_azm$tl) != 0){
+  at_column <- c("1. Azithromycin", "2. Cefixime", "3. Ceftriaxone", "4. Ciprofloxacin", "5. Gentamicin", "6. Nalixidic acid", "7. Spectinomycin"," 8. Tetracycline")
+
+at_total <- c(ngo_azm$at_sum,ngo_cfm$at_sum,ngo_cro$at_sum,ngo_cip$at_sum,ngo_gen$at_sum,ngo_nal$at_sum,ngo_spt$at_sum,ngo_tcy$at_sum)
+
+at_pct <- c(ngo_azm$at_pc,ngo_cfm$at_pc,ngo_cro$at_pc,ngo_cip$at_pc,ngo_gen$at_pc,ngo_nal$at_pc,ngo_spt$at_pc,ngo_tcy$at_pc)
+at_pct <- paste(at_pct,"%")
+
+at_ngo_df <- data.frame(at_column,at_total,at_pct)
+
+# assigning new names to the columns of the data frame 
+colnames(at_ngo_df) <- c('Antibiotic','Number Tested','Percentage') 
+
+
+kable(at_ngo_df,align = "lcc") %>%
+  column_spec(1, width = "6cm",border_left = TRUE) %>%
+  column_spec(2, width = "3cm") %>%
+  column_spec(3, width = "3cm",border_right = TRUE)%>%
+  add_header_above(c("Neisseria gonorrhoeae", "Number",ngo_azm$tl),italic = TRUE,bold = TRUE) %>%
+  row_spec(0,bold = TRUE,align = "c")
+  
+}
+
+
+```
+
+
+$\\$
+```{r at_spn_monitoring, echo=FALSE, message=FALSE, warnings=FALSE}
+if((spn_cro$tl) != 0){
+  at_column <- c("1. Ceftriaxone non-meningitis or Ceftriaxone meningitis", "2. Clindamycin","3. Erythromycin","4. Imipenem","5. Levofloxacin","6. Linezolid","7. Meropenem","8. Oxacillin","9. Penicillin","10. Rifampin","11. Tetracycline","12. Trimethoprim-Sulfamethoxazole","13. Vancomycin")
+
+at_total <- c(spn_cro$at_sum,spn_cli$at_sum,spn_ery$at_sum,spn_ipm$at_sum,spn_lvx$at_sum,spn_lnz$at_sum,spn_mem$at_sum,spn_oxa$at_sum,spn_pen$at_sum,spn_rif$at_sum,spn_tcy$at_sum,spn_sxt$at_sum,spn_van$at_sum)
+
+at_pct <- c(spn_cro$at_pc,spn_cli$at_pc,spn_ery$at_pc,spn_ipm$at_pc,spn_lvx$at_pc,spn_lnz$at_pc,spn_mem$at_pc,spn_oxa$at_pc,spn_pen$at_pc,spn_rif$at_pc,spn_tcy$at_pc,spn_sxt$at_pc,spn_van$at_pc)
+at_pct <- paste(at_pct,"%")
+
+at_spn_df <- data.frame(at_column,at_total,at_pct)
+
+# assigning new names to the columns of the data frame 
+colnames(at_spn_df) <- c('Antibiotic','Number Tested','Percentage') 
+
+
+kable(at_spn_df,align = "lcc") %>%
+  column_spec(1, width = "6cm",border_left = TRUE) %>%
+  column_spec(2, width = "3cm") %>%
+  column_spec(3, width = "3cm",border_right = TRUE)%>%
+  add_header_above(c("Streptococcus pneumoniae", "Number",spn_cro$tl),italic = TRUE,bold = TRUE) %>%
+  row_spec(0,bold = TRUE,align = "c")
+
+}
+```
+
+$\\$
+```{r at_ent_monitoring, echo=FALSE, message=FALSE, warnings=FALSE}
+if((ent_amp$tl) != 0){
+  at_column <- c("1. Ampicillin", "2. Daptomycin", "3. Gentamicin High Level", "4. Linezolid", "5. Penicillin", "6. Streptomycin High Level", "7. Vancomycin")
+
+at_total <- c(ent_amp$at_pc,ent_dap$at_pc,ent_geh$at_pc,ent_lnz$at_pc,ent_pen$at_pc,ent_sth$at_pc,ent_van$at_pc)
+
+at_pct <- c(ent_amp$at_sum,ent_dap$at_sum,ent_geh$at_sum,ent_lnz$at_sum,ent_pen$at_sum,ent_sth$at_sum,ent_van$at_sum)
+at_pct <- paste(at_pct,"%")
+
+at_ent_df <- data.frame(at_column,at_total,at_pct)
+
+tl_cols <- nrow(at_ent_df)
+new_row1 = list(at_column = "Additional for Urine", at_total = " ",at_pct = ent_cro_ur$tl_ur)
+new_row2 = list(at_column = "1. Ciprofloxacin", at_total = ent_cro_ur$at_sum_ur,at_pct = paste(ent_cro_ur$at_pc_ur,"%"))
+new_row3 = list(at_column = "2. Levofloxacin", at_total = ent_lvx_ur$at_sum_ur,at_pct = paste(ent_lvx_ur$at_pc_ur,"%"))
+new_row4 = list(at_column = "3. Nitrofurantoin", at_total = ent_nit_ur$at_sum_ur,at_pct = paste(ent_nit_ur$at_pc_ur,"%"))
+new_row5 = list(at_column = "4. Tetracycline", at_total = ent_tcy_ur$at_sum_ur,at_pct = paste(ent_tcy_ur$at_pc_ur,"%"))
+at_ent_df = rbind(at_ent_df,new_row1,new_row2,new_row3,new_row4,new_row5)
+
+# assigning new names to the columns of the data frame 
+colnames(at_ent_df) <- c('Antibiotic','Number Tested','Percentage') 
+
+
+
+kable(at_ent_df,align = "lcc") %>%
+  column_spec(1, width = "6cm",border_left = TRUE) %>%
+  column_spec(2, width = "3cm") %>%
+  column_spec(3, width = "3cm",border_right = TRUE)%>%
+  add_header_above(c("Enterococcus sp.", "Number",ent_amp$tl),italic = TRUE,bold = TRUE) %>%
+  row_spec(0,bold = TRUE,align = "c")%>%
+  row_spec(8,bold = TRUE,align = "c")
+  
+}
+
+```
+
+$\\$
+```{r at_sta_monitoring, echo=FALSE, message=FALSE, warnings=FALSE}
+if((sta_fox$tl) != 0){
+  at_column <- c("1. Cefoxitin", "2. Ciprofloxacin", "3. Clindamycin", "4. Daptomycin","5. Erythromycin", "6. Linezolid", "7. Oxacillin", "8. Penicillin", "9. Rifampin", "10. Tetracycline", "11. Trimethoprim-Sulfamethoxazole","12. Vancomycin")
+
+at_total <- c(sta_fox$at_pc,sta_cip$at_pc,sta_cli$at_pc,sta_dap$at_pc,sta_ery$at_pc,sta_lnz$at_pc,sta_oxa$at_pc,sta_pen$at_pc,sta_rif$at_pc,sta_tcy$at_pc,sta_sxt$at_pc,sta_van$at_pc)
+
+at_pct <- c(sta_fox$at_sum,sta_cip$at_sum,sta_cli$at_sum,sta_dap$at_sum,sta_ery$at_sum,sta_lnz$at_sum,sta_oxa$at_sum,sta_pen$at_sum,sta_rif$at_sum,sta_tcy$at_sum,sta_sxt$at_sum,sta_van$at_sum)
+at_pct <- paste(at_pct,"%")
+
+at_sta_df <- data.frame(at_column,at_total,at_pct)
+
+tl_cols <- nrow(at_sta_df)
+new_row1 = list(at_column = "Additional for Urine", at_total = " ",at_pct = sta_nit_ur$tl_ur)
+new_row2 = list(at_column = "1. Nitrofurantoin", at_total = sta_nit_ur$at_sum_ur,at_pct = paste(sta_nit_ur$at_pc_ur,"%"))
+at_sta_df = rbind(at_sta_df,new_row1,new_row2)
+
+# assigning new names to the columns of the data frame 
+colnames(at_sta_df) <- c('Antibiotic','Number Tested','Percentage') 
+
+
+kable(at_sta_df,align = "lcc") %>%
+  column_spec(1, width = "6cm",border_left = TRUE) %>%
+  column_spec(2, width = "3cm") %>%
+  column_spec(3, width = "3cm",border_right = TRUE)%>%
+  add_header_above(c("Enterococcus sp.", "Number",ent_amp$tl),italic = TRUE,bold = TRUE) %>%
+  row_spec(0,bold = TRUE,align = "c")%>%
+  row_spec(13,bold = TRUE,align = "c")
+  
+}
+
+
+```
+
+$\\$
+```{r at_pce_monitoring, echo=FALSE, message=FALSE, warnings=FALSE}
+if((pce_caz$tl) != 0){
+  at_column <- c("1. Ceftazidime","2. Chloramphenicol","3. Levofloxacin","4. Meropenem","5. Minocycline","6. Trimethoprim-Sulfamethoxazole")
+
+at_total <- c(pce_caz$at_sum,pce_chl$at_sum,pce_lvx$at_sum,pce_mem$at_sum,pce_mno$at_sum,pce_sxt$at_sum)
+
+at_pct <- c(pce_caz$at_pc,pce_chl$at_pc,pce_lvx$at_pc,pce_mem$at_pc,pce_mno$at_pc,pce_sxt$at_pc)
+at_pct <- paste(at_pct,"%")
+
+at_pce_df <- data.frame(at_column,at_total,at_pct)
+
+# assigning new names to the columns of the data frame 
+colnames(at_pce_df) <- c('Antibiotic','Number Tested','Percentage') 
+
+
+kable(at_pce_df,align = "lcc") %>%
+  column_spec(1, width = "6cm",border_left = TRUE) %>%
+  column_spec(2, width = "3cm") %>%
+  column_spec(3, width = "3cm",border_right = TRUE)%>%
+  add_header_above(c("Burkholderia cepacia complex", "Number",pce_caz$tl),italic = TRUE,bold = TRUE) %>%
+  row_spec(0,bold = TRUE,align = "c")
+
+  
+}
+
+```
+
+$\\$
+```{r at_pma_monitoring, echo=FALSE, message=FALSE, warnings=FALSE}
+if((pma_caz$tl) != 0){
+  
+at_column <- c("1. Ceftazidime","2. Chloramphenicol","3. Levofloxacin","4. Minocycline","5. Trimethoprim-Sulfamethoxazole")
+
+at_total <- c(pma_caz$at_sum,pma_chl$at_sum,pma_lvx$at_sum,pma_mno$at_sum,pma_sxt$at_sum)
+
+at_pct <- c(pma_caz$at_pc, pma_chl$at_pc, pma_lvx$at_pc, pma_mno$at_pc, pma_sxt$at_pc)
+at_pct <- paste(at_pct,"%")
+
+at_pma_df <- data.frame(at_column,at_total,at_pct)
+
+# assigning new names to the columns of the data frame 
+colnames(at_pma_df) <- c('Antibiotic','Number Tested','Percentage') 
+
+
+kable(at_pma_df,align = "lcc") %>%
+  column_spec(1, width = "6cm",border_left = TRUE) %>%
+  column_spec(2, width = "3cm") %>%
+  column_spec(3, width = "3cm",border_right = TRUE)%>%
+  add_header_above(c("Stenotrophomonas maltophilia", "Number",pma_caz$tl),italic = TRUE,bold = TRUE) %>%
+  row_spec(0,bold = TRUE,align = "c")
+}
+
+
+
+```
+
+$\\$
+```{r at_svi_monitoring, echo=FALSE, message=FALSE, warnings=FALSE}
+if((svi_amp$tl) != 0){
+  at_column <- c("1. Ampicillin", "2. Cefepime", "3. Cefotaxime", "4. Cefriaxone", "5. Chloramphenicol", "6. Clindamycin", "7. Erythromycin", "8. Linezolid", "9. Penicillin", "10. Vancomycin")
+
+at_total <- c(svi_amp$at_sum,svi_fep$at_sum,svi_ctx$at_sum,svi_cro$at_sum,svi_chl$at_sum,svi_cli$at_sum,svi_ery$at_sum,svi_lnz$at_sum,svi_pen$at_sum,svi_van$at_sum)
+
+at_pct <- c(svi_amp$at_pc, svi_fep$at_pc, svi_ctx$at_pc, svi_cro$at_pc, svi_chl$at_pc,svi_cli$at_pc, svi_ery$at_pc, svi_lnz$at_pc, svi_pen$at_pc, svi_van$at_pc)
+at_pct <- paste(at_pct,"%")
+
+at_svi_df <- data.frame(at_column,at_total,at_pct)
+
+# assigning new names to the columns of the data frame 
+colnames(at_svi_df) <- c('Antibiotic','Number Tested','Percentage') 
+
+
+kable(at_svi_df,align = "lcc") %>%
+  column_spec(1, width = "6cm",border_left = TRUE) %>%
+  column_spec(2, width = "3cm") %>%
+  column_spec(3, width = "3cm",border_right = TRUE)%>%
+  add_header_above(c("Streptococcus viridans Group", "Number",svi_amp$tl),italic = TRUE,bold = TRUE) %>%
+  row_spec(0,bold = TRUE,align = "c")
+}
+
+```
+
+$\\$
+```{r at_bs_monitoring, echo=FALSE, message=FALSE, warnings=FALSE}
+if((bs_chl$tl) != 0){
+  at_column <- c("1. Ampicillin or Penicillin", "2. Cefepime or Cefotaxime or Cetriaxone", "3. Chloramphenicol", "4. Clindamycin", "5. Daptomycin", "6. Erythromycin", "7. Levofloxacin", "8. Linezolid", "9. Vancomycin")
+
+at_total <- c(bs_amp_pen_sum,bs_fep_ctx_cro_sum,bs_chl$at_sum,bs_cli$at_sum,bs_dap$at_sum,bs_ery$at_sum,bs_lvx$at_sum,bs_lnz$at_sum,bs_van$at_sum)
+
+at_pct <- c(bs_amp_pen_cp,bs_fep_ctx_cro_cp,bs_chl$at_pc,bs_cli$at_pc,bs_dap$at_pc,bs_ery$at_pc,bs_lvx$at_pc,bs_lnz$at_pc,bs_van$at_pc)
+at_pct <- paste(at_pct,"%")
+
+at_bs_df <- data.frame(at_column,at_total,at_pct)
+
+# assigning new names to the columns of the data frame 
+colnames(at_bs_df) <- c('Antibiotic','Number Tested','Percentage') 
+
+
+kable(at_bs_df,align = "lcc") %>%
+  column_spec(1, width = "6cm",border_left = TRUE) %>%
+  column_spec(2, width = "3cm") %>%
+  column_spec(3, width = "3cm",border_right = TRUE)%>%
+  add_header_above(c("Beta-hemolytic streptococci", "Number",bs_chl$tl),italic = TRUE,bold = TRUE) %>%
+  row_spec(0,bold = TRUE,align = "c")
+}
+
+```
+
+$\\ \\$
+
+**Part II-B. Other Phenotypic**
+
+**ESBL**
+
+```{r at_esbl_monitoring, echo=FALSE, message=FALSE, warnings=FALSE}
+esbl_code <- c("eco","kpn")
+esbl_orgname <- c("Escherichia coli","Klebsiella pneumoniae ss. pneumoniae")
+
+esbl_total <- c(eco_esbl$tl_pheno,kpn_esbl$tl_pheno)
+esbl_p <- c(eco_esbl$positive_esbl,kpn_esbl$positive_esbl)
+esbl_n <- c(eco_esbl$negative_esbl,kpn_esbl$negative_esbl)
+
+esbl_df <- data.frame(esbl_code,esbl_orgname,esbl_total,esbl_p,esbl_n)
+
+# assigning new names to the columns of the data frame 
+colnames(esbl_df) <- c('Code','Organism','Number of isolates','+','-') 
+
+
+kable(esbl_df,align = "llccc") %>%
+  column_spec(1, width = "2cm",border_left = TRUE) %>%
+  column_spec(2, width = "5cm", italic = TRUE) %>%
+  column_spec(3, width = "3cm") %>%
+  column_spec(4, width = "1cm") %>%
+  column_spec(5, width = "1cm",border_right = TRUE)%>%
+  row_spec(0,bold = TRUE)
+
+```
+
+**MRSA**
+
+```{r at_mrsa_monitoring, echo=FALSE, message=FALSE, warnings=FALSE}
+mrsa_df <- data.frame(sau_code = 'sau',sau_orgname = 'Staphylococcus aureaus ss. aureaus',sau_total = sau_mrsa$tl_pheno,sau_p = sau_mrsa$positive_mrsa,sau_n = sau_mrsa$negative_mrsa)
+
+# assigning new names to the columns of the data frame 
+colnames(mrsa_df) <- c('Code','Organism','Number of isolates','+','-') 
+
+
+kable(mrsa_df,align = "llccc") %>%
+  column_spec(1, width = "2cm",border_left = TRUE) %>%
+  column_spec(2, width = "5cm", italic = TRUE) %>%
+  column_spec(3, width = "3cm") %>%
+  column_spec(4, width = "1cm") %>%
+  column_spec(5, width = "1cm",border_right = TRUE)%>%
+  row_spec(0,bold = TRUE)
+
+```
+
+$\\ \\$
+
+**Part III. List of unusual/referable isolates**
+
+```{r eco_unusual_table, echo=FALSE, message=FALSE, warnings=FALSE}
+if(!is.null(eco_referred[[3]])){
+  names(eco_referred[[3]]) <- toupper(names(eco_referred[[3]]))
+  colnames(eco_referred[[3]])[1:8] <- c('ID No','Sex','Age','Date_adm','SP Num','SP Date','SP Type','Org') 
+  
+  kable(eco_referred[[3]], caption = "Escherichia coli",align = "c") %>%
+    kable_styling(latex_options = c("hold_position","scale_down"))
+}
+```
+
+
+```{r kpn_unusual_table, echo=FALSE, message=FALSE, warnings=FALSE}
+if(!is.null(kpn_referred[[3]])){
+  names(kpn_referred[[3]]) <- toupper(names(kpn_referred[[3]]))
+  colnames(kpn_referred[[3]])[1:8] <- c('ID No','Sex','Age','Date_adm','SP Num','SP Date','SP Type','Org') 
+  
+  kable(kpn_referred[[3]],align = "c", caption = "Klebsiella pneumoniae") %>%
+    kable_styling(latex_options = c("hold_position","scale_down"))
+}
+
+```
+
+```{r aba_unusual_table, echo=FALSE, message=FALSE, warnings=FALSE}
+if(!is.null(aba_referred[[3]])){
+  names(aba_referred[[3]]) <- toupper(names(aba_referred[[3]]))
+  colnames(aba_referred[[3]])[1:8] <- c('ID No','Sex','Age','Date_adm','SP Num','SP Date','SP Type','Org') 
+  
+  kable(aba_referred[[3]],align = "c", caption = "Acinetobacter baumanni") %>%
+    kable_styling(latex_options = c("hold_position","scale_down"))
+}
+
+```
+
+```{r pae_unusual_table, echo=FALSE, message=FALSE, warnings=FALSE}
+if(!is.null(pae_referred[[3]])){
+  names(pae_referred[[3]]) <- toupper(names(pae_referred[[3]]))
+  colnames(pae_referred[[3]])[1:8] <- c('ID No','Sex','Age','Date_adm','SP Num','SP Date','SP Type','Org') 
+
+  kable(pae_referred[[3]],align = "c", caption = "Pseudomonas aeruginosa") %>%
+    kable_styling(latex_options = c("hold_position","scale_down"))
+}
+
+```
+
+```{r pma_unusual_table, echo=FALSE, message=FALSE, warnings=FALSE}
+if(!is.null(pma_referred[[3]])){
+  names(pma_referred[[3]]) <- toupper(names(pma_referred[[3]]))
+  colnames(pma_referred[[3]])[1:8] <- c('ID No','Sex','Age','Date_adm','SP Num','SP Date','SP Type','Org') 
+
+  kable(pma_referred[[3]],align = "c", caption = "Stenotrophomonas maltophilia") %>%
+    kable_styling(latex_options = c("hold_position","scale_down"))
+}else{
+  
+}
+```
+
+
+```{r bs_unusual_table, echo=FALSE, message=FALSE, warnings=FALSE}
+if(!is.null(bs_referred[[3]])){
+  names(bs_referred[[3]]) <- toupper(names(bs_referred[[3]]))
+  colnames(bs_referred[[3]])[1:8] <- c('ID No','Sex','Age','Date_adm','SP Num','SP Date','SP Type','Org') 
+
+  kable(bs_referred[[3]],align = "c", caption = "Beta-Hemolytic Streptococci") %>%
+    kable_styling(latex_options = c("hold_position","scale_down"))
+}
+
+```
+
+```{r efa_unusual_table, echo=FALSE, message=FALSE, warnings=FALSE}
+if(!is.null(efa_referred[[3]])){
+  names(efa_referred[[3]]) <- toupper(names(efa_referred[[3]]))
+  colnames(efa_referred[[3]])[1:8] <- c('ID No','Sex','Age','Date_adm','SP Num','SP Date','SP Type','Org') 
+
+  kable(efa_referred[[3]],align = "c", caption = "Enterococcus faecalis") %>%
+    kable_styling(latex_options = c("hold_position","scale_down"))
+}
+
+```
+
+```{r efm_unusual_table, echo=FALSE, message=FALSE, warnings=FALSE}
+if(!is.null(efm_referred[[3]])){
+  names(efm_referred[[3]]) <- toupper(names(efm_referred[[3]]))
+  colnames(efm_referred[[3]])[1:8] <- c('ID No','Sex','Age','Date_adm','SP Num','SP Date','SP Type','Org') 
+
+  kable(efm_referred[[3]],align = "c", caption = "Enterococcus faecium") %>%
+    kable_styling(latex_options = c("hold_position","scale_down"))
+}
+
+```
+
+```{r sau_unusual_table, echo=FALSE, message=FALSE, warnings=FALSE}
+if(!is.null(sau_referred[[3]])){
+  names(sau_referred[[3]]) <- toupper(names(sau_referred[[3]]))
+  colnames(sau_referred[[3]])[1:8] <- c('ID No','Sex','Age','Date_adm','SP Num','SP Date','SP Type','Org') 
+
+  kable(sau_referred[[3]],align = "c", caption = "Staphylococcus aureus") %>%
+    kable_styling(latex_options = c("hold_position","scale_down"))
+}
+```
+
+```{r sta_unusual_table, echo=FALSE, message=FALSE, warnings=FALSE}
+if(!is.null(sta_referred[[3]])){
+   names(sta_referred[[3]]) <- toupper(names(sta_referred[[3]]))
+  colnames(sta_referred[[3]])[1:8] <- c('ID No','Sex','Age','Date_adm','SP Num','SP Date','SP Type','Org') 
+
+  kable(sta_referred[[3]],align = "c", caption = "Staphylocococcus spp. other than S.aureus") %>%
+    kable_styling(latex_options = c("hold_position","scale_down"))
+}
+
+```
+
+```{r hin_hpi_unusual_table, echo=FALSE, message=FALSE, warnings=FALSE}
+if(!is.null(hin_hpi_referred[[3]])){
+  names(hin_hpi_referred[[3]]) <- toupper(names(hin_hpi_referred[[3]]))
+  colnames(hin_hpi_referred[[3]])[1:8] <- c('ID No','Sex','Age','Date_adm','SP Num','SP Date','SP Type','Org') 
+
+  kable(hin_hpi_referred[[3]],align = "c", caption = "Haemophilus influenzae and Haemophilus parainfluenzae") %>%
+    kable_styling(latex_options = c("hold_position","scale_down"))
+}
+
+```
+
+```{r ngo_unusual_table, echo=FALSE, message=FALSE, warnings=FALSE}
+if(!is.null(ngo_referred[[3]])){
+  names(ngo_referred[[3]]) <- toupper(names(ngo_referred[[3]]))
+  colnames(ngo_referred[[3]])[1:8] <- c('ID No','Sex','Age','Date_adm','SP Num','SP Date','SP Type','Org') 
+
+  kable(ngo_referred[[3]],align = "c", caption = "Neisseria gonorrhoeae") %>%
+    kable_styling(latex_options = c("hold_position","scale_down"))
+}
+
+```
+
+```{r nme_unusual_table, echo=FALSE, message=FALSE, warnings=FALSE}
+if(!is.null(nme_referred[[3]])){
+  names(nme_referred[[3]]) <- toupper(names(nme_referred[[3]]))
+  colnames(nme_referred[[3]])[1:8] <- c('ID No','Sex','Age','Date_adm','SP Num','SP Date','SP Type','Org') 
+
+  kable(nme_referred[[3]],align = "c", caption = "Neisseria meningitidis") %>%
+    kable_styling(latex_options = c("hold_position","scale_down"))
+}
+
+```
+
+```{r spn_unusual_table, echo=FALSE, message=FALSE, warnings=FALSE}
+if(!is.null(spn_referred[[3]])){
+  names(spn_referred[[3]]) <- toupper(names(spn_referred[[3]]))
+  colnames(spn_referred[[3]])[1:8] <- c('ID No','Sex','Age','Date_adm','SP Num','SP Date','SP Type','Org') 
+
+  kable(spn_referred[[3]],align = "c", caption = "Streptococcus pneumoniae") %>%
+    kable_styling(latex_options = c("hold_position","scale_down"))
+}
+
+```
+
+```{r sal_unusual_table, echo=FALSE, message=FALSE, warnings=FALSE}
+if(!is.null(sal_referred[[3]])){
+  names(sal_referred[[3]]) <- toupper(names(sal_referred[[3]]))
+  colnames(sal_referred[[3]])[1:8] <- c('ID No','Sex','Age','Date_adm','SP Num','SP Date','SP Type','Org') 
+
+  kable(sal_referred[[3]],align = "c", caption = "Salmonella species") %>%
+    kable_styling(latex_options = c("hold_position","scale_down"))
+}
+```
+
+```{r shi_unusual_table, echo=FALSE, message=FALSE, warnings=FALSE}
+if(!is.null(shi_referred[[3]])){
+  names(shi_referred[[3]]) <- toupper(names(shi_referred[[3]]))
+  colnames(shi_referred[[3]])[1:8] <- c('ID No','Sex','Age','Date_adm','SP Num','SP Date','SP Type','Org') 
+
+  kable(shi_referred[[3]],align = "c", caption = "Shigella species") %>%
+    kable_styling(latex_options = c("hold_position","scale_down"), position = "float_left")
+}
+
+```
+
+$\\ \\$
+**Part IV. Submission of Quality Control isolates**
+
+```{r qc_table, echo=FALSE, message=FALSE, warnings=FALSE}
+# assigning new names to the columns of the data frame 
+if(nrow(qc_df) != 0){
+  colnames(qc_df) <- c('Code','Organism','Code','Number of isolates')
+  kable(qc_df,align = "clcc")%>%
+    kable_styling(latex_options = c("hold_position"))%>%
+    column_spec(1, width = "2cm",border_left = TRUE) %>%
+    column_spec(2, width = "5cm", italic = TRUE) %>%
+    column_spec(3, width = "3cm") %>%
+    column_spec(4, width = "4cm",border_right = TRUE) %>%
+    row_spec(0, background = "#D4D4D4",bold = TRUE)
+
+}
+
+```
